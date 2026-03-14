@@ -41,11 +41,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.shashsam.boop.R
 import com.shashsam.boop.ui.theme.BoopTheme
 import com.shashsam.boop.ui.theme.SuccessGreen
 
@@ -135,7 +137,7 @@ private fun SystemStatusBanner(
         targetValue = if (permissionsGranted)
             SuccessGreen.copy(alpha = 0.15f)
         else
-            MaterialTheme.colorScheme.errorContainer,
+            MaterialTheme.colorScheme.tertiaryContainer,
         animationSpec = tween(durationMillis = 500),
         label = "statusBannerColor"
     )
@@ -144,16 +146,16 @@ private fun SystemStatusBanner(
         targetValue = if (permissionsGranted)
             SuccessGreen
         else
-            MaterialTheme.colorScheme.onErrorContainer,
+            MaterialTheme.colorScheme.onTertiaryContainer,
         animationSpec = tween(durationMillis = 500),
         label = "statusBannerContentColor"
     )
 
     val icon: ImageVector = if (permissionsGranted) Icons.Filled.CheckCircle else Icons.Filled.Warning
     val statusText = if (permissionsGranted)
-        "Systems Ready: Permissions Granted"
+        stringResource(R.string.status_permissions_granted)
     else
-        "Awaiting Permissions…"
+        stringResource(R.string.status_awaiting_permissions)
 
     AnimatedVisibility(
         visible = true,
@@ -208,15 +210,16 @@ private fun ActionButtonRow(
                 onSendClick()
             },
             expanded = true,
+            enabled = enabled,
             icon = {
                 Icon(
                     imageVector = Icons.Filled.CloudUpload,
-                    contentDescription = "Send File"
+                    contentDescription = stringResource(R.string.send_file)
                 )
             },
             text = {
                 Text(
-                    text = "Send File",
+                    text = stringResource(R.string.send_file),
                     style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.ExtraBold,
                     fontFamily = FontFamily.Default
@@ -242,15 +245,16 @@ private fun ActionButtonRow(
                 onReceiveClick()
             },
             expanded = true,
+            enabled = enabled,
             icon = {
                 Icon(
                     imageVector = Icons.Filled.CloudDownload,
-                    contentDescription = "Receive File"
+                    contentDescription = stringResource(R.string.receive_file)
                 )
             },
             text = {
                 Text(
-                    text = "Receive File",
+                    text = stringResource(R.string.receive_file),
                     style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.ExtraBold,
                     fontFamily = FontFamily.Default

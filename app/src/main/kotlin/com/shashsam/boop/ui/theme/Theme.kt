@@ -83,7 +83,7 @@ fun BoopTheme(
         else -> BoopLightColorScheme
     }
 
-    // Make the system status bar transparent so our full-bleed background shows through.
+    // Set the system status bar to match the theme background color.
     val view = LocalView.current
     if (!view.isInEditMode) {
         SideEffect {
