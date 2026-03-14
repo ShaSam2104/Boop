@@ -1,18 +1,21 @@
 package com.shashsam.boop
 
+import com.shashsam.boop.utils.requiredPermissions
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ExampleUnitTest {
     @Test
     fun addition_isCorrect() {
-        assert(2 + 2 == 4)
+        assertEquals(4, 2 + 2)
     }
 
     @Test
     fun permissionList_isNotNull() {
-        // Verify the utility function compiles and returns a non-null result.
-        // Full permission checks run on an Android device; this just validates compilation.
-        assertNotNull("requiredPermissions() must return a non-null array", Any())
+        val permissions = requiredPermissions()
+        assertNotNull("requiredPermissions() must return a non-null array", permissions)
+        assertTrue("requiredPermissions() must return a non-empty array", permissions.isNotEmpty())
     }
 }

@@ -23,20 +23,19 @@ private const val TAG = "BoopPermissions"
  */
 fun requiredPermissions(): Array<String> {
     val permissions = mutableListOf(
-        Manifest.permission.NFC,
-        Manifest.permission.ACCESS_FINE_LOCATION,
-        Manifest.permission.ACCESS_COARSE_LOCATION
+        Manifest.permission.NFC
     )
 
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-        // Android 13+ — granular media + nearby Wi-Fi (no location needed for Wi-Fi Direct)
+        // Android 13+ — granular media + nearby Wi-Fi; location not required for Wi-Fi Direct
         permissions += Manifest.permission.READ_MEDIA_IMAGES
         permissions += Manifest.permission.READ_MEDIA_VIDEO
         permissions += Manifest.permission.READ_MEDIA_AUDIO
         permissions += Manifest.permission.NEARBY_WIFI_DEVICES
-        // Location is still required for NFC / other APIs on 33, keep it in the list
     } else {
-        // Android 8–12 — legacy storage
+        // Android 8–12 — legacy storage + location required for Wi-Fi Direct peer discovery
+        permissions += Manifest.permission.ACCESS_FINE_LOCATION
+        permissions += Manifest.permission.ACCESS_COARSE_LOCATION
         permissions += Manifest.permission.READ_EXTERNAL_STORAGE
         if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.P) {
             permissions += Manifest.permission.WRITE_EXTERNAL_STORAGE
