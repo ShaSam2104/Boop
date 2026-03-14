@@ -1,0 +1,6 @@
+<resources>
+    <!-- Base application theme — the Compose theme (BoopTheme) handles
+         all M3 styling. This XML theme is required by the Activity window
+         before Compose takes over, so keep it minimal. -->
+    <style name="Theme.Boop" parent="android:Theme.Material.Light.NoActionBar" />
+</resources>

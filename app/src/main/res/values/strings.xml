@@ -1,0 +1,11 @@
+<resources>
+    <string name="app_name">Boop</string>
+    <string name="hce_service_description">Boop P2P NFC Handshake Service</string>
+    <string name="hce_aid_group_description">Boop P2P handshake AID group</string>
+    <string name="send_file">Send File</string>
+    <string name="receive_file">Receive File</string>
+    <string name="status_permissions_granted">Systems Ready: Permissions Granted</string>
+    <string name="status_awaiting_permissions">Awaiting Permissions…</string>
+    <string name="activity_log_title">Activity Log</string>
+    <string name="no_activity_yet">No activity yet. Tap a button to get started.</string>
+</resources>
