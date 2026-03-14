@@ -1,5 +1,6 @@
 package com.shashsam.boop.ui.screens
 
+import android.content.Context
 import android.util.Log
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
@@ -27,12 +28,14 @@ import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Nfc
 import androidx.compose.material.icons.filled.Wifi
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -45,6 +48,9 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -53,10 +59,13 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.shashsam.boop.R
 import com.shashsam.boop.nfc.ConnectionDetails
+import com.shashsam.boop.ui.components.NfcAntennaGuide
+import com.shashsam.boop.ui.components.rememberNfcAntennaPosition
 import com.shashsam.boop.ui.theme.BoopTheme
 import com.shashsam.boop.ui.theme.SuccessGreen
 import com.shashsam.boop.ui.viewmodels.TransferUiState
@@ -94,6 +103,25 @@ fun HomeScreen(
 ) {
     Log.d(TAG, "HomeScreen recompose — permissionsGranted=$permissionsGranted logSize=${transferUiState.statusLog.size}")
 
+    // ── NFC Antenna Guide state ─────────────────────────────────────────
+    val context = LocalContext.current
+    val antennaPosition = rememberNfcAntennaPosition()
+    var antennaGuideVisible by remember { mutableStateOf(false) }
+    val nfcActive = transferUiState.isNfcBroadcasting || transferUiState.isNfcReading
+
+    // Auto-show on first NFC activation; subsequent activations require manual toggle.
+    LaunchedEffect(nfcActive) {
+        if (nfcActive) {
+            val prefs = context.getSharedPreferences("boop_prefs", Context.MODE_PRIVATE)
+            if (!prefs.getBoolean("nfc_antenna_guide_seen", false)) {
+                antennaGuideVisible = true
+                prefs.edit().putBoolean("nfc_antenna_guide_seen", true).apply()
+            }
+        } else {
+            antennaGuideVisible = false
+        }
+    }
+
     Scaffold(
         modifier = modifier,
         topBar = {
@@ -125,7 +153,20 @@ fun HomeScreen(
             SystemStatusBanner(permissionsGranted = permissionsGranted)
 
             // ── NFC / Wi-Fi status indicators ─────────────────────────────────
-            NfcWifiStatusRow(uiState = transferUiState)
+            NfcWifiStatusRow(
+                uiState = transferUiState,
+                antennaGuideVisible = antennaGuideVisible,
+                onAntennaInfoToggle = { antennaGuideVisible = !antennaGuideVisible }
+            )
+
+            // ── NFC Antenna Location Guide ───────────────────────────────────
+            AnimatedVisibility(
+                visible = nfcActive && antennaGuideVisible,
+                enter = fadeIn() + slideInVertically(),
+                exit = fadeOut()
+            ) {
+                NfcAntennaGuide(antennaPosition = antennaPosition)
+            }
 
             // ── Action buttons ────────────────────────────────────────────────
             ActionButtonRow(
@@ -264,6 +305,8 @@ private fun buildPayloadJsonString(payload: ConnectionDetails): String {
 @Composable
 private fun NfcWifiStatusRow(
     uiState: TransferUiState,
+    antennaGuideVisible: Boolean = false,
+    onAntennaInfoToggle: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     AnimatedVisibility(
@@ -273,7 +316,8 @@ private fun NfcWifiStatusRow(
     ) {
         Row(
             modifier = modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
             if (uiState.isNfcBroadcasting || uiState.isNfcReading) {
                 StatusChip(
@@ -292,6 +336,23 @@ private fun NfcWifiStatusRow(
                     contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
                     modifier = Modifier.weight(1f)
                 )
+            }
+            // NFC antenna location info toggle
+            if (uiState.isNfcBroadcasting || uiState.isNfcReading) {
+                IconButton(
+                    onClick = onAntennaInfoToggle,
+                    modifier = Modifier.size(36.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Info,
+                        contentDescription = "Show NFC antenna location",
+                        tint = if (antennaGuideVisible)
+                            MaterialTheme.colorScheme.primary
+                        else
+                            MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
             }
         }
     }
