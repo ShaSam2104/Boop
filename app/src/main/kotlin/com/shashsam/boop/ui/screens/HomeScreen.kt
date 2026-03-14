@@ -71,6 +71,8 @@ import com.shashsam.boop.ui.theme.SuccessGreen
 import com.shashsam.boop.ui.viewmodels.TransferUiState
 
 private const val TAG = "HomeScreen"
+private const val PREFS_NAME = "boop_prefs"
+private const val KEY_ANTENNA_GUIDE_SEEN = "nfc_antenna_guide_seen"
 
 /**
  * Immutable data model for a single status log entry shown in the activity card.
@@ -105,6 +107,7 @@ fun HomeScreen(
 
     // ── NFC Antenna Guide state ─────────────────────────────────────────
     val context = LocalContext.current
+    val prefs = remember { context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE) }
     val antennaPosition = rememberNfcAntennaPosition()
     var antennaGuideVisible by remember { mutableStateOf(false) }
     val nfcActive = transferUiState.isNfcBroadcasting || transferUiState.isNfcReading
@@ -112,10 +115,9 @@ fun HomeScreen(
     // Auto-show on first NFC activation; subsequent activations require manual toggle.
     LaunchedEffect(nfcActive) {
         if (nfcActive) {
-            val prefs = context.getSharedPreferences("boop_prefs", Context.MODE_PRIVATE)
-            if (!prefs.getBoolean("nfc_antenna_guide_seen", false)) {
+            if (!prefs.getBoolean(KEY_ANTENNA_GUIDE_SEEN, false)) {
                 antennaGuideVisible = true
-                prefs.edit().putBoolean("nfc_antenna_guide_seen", true).apply()
+                prefs.edit().putBoolean(KEY_ANTENNA_GUIDE_SEEN, true).apply()
             }
         } else {
             antennaGuideVisible = false
@@ -340,8 +342,7 @@ private fun NfcWifiStatusRow(
             // NFC antenna location info toggle
             if (uiState.isNfcBroadcasting || uiState.isNfcReading) {
                 IconButton(
-                    onClick = onAntennaInfoToggle,
-                    modifier = Modifier.size(36.dp)
+                    onClick = onAntennaInfoToggle
                 ) {
                     Icon(
                         imageVector = Icons.Filled.Info,

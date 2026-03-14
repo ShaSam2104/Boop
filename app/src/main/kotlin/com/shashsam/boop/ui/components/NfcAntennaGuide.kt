@@ -223,17 +223,17 @@ fun NfcAntennaGuide(
                 size = Size(btnWidth, powerBtnH),
                 cornerRadius = CornerRadius(1.5.dp.toPx())
             )
-            // Volume buttons (left edge)
+            // Volume buttons (left edge — flush to body to avoid negative-offset clipping)
             val volBtnH = 20.dp.toPx()
             drawRoundRect(
                 color = outline.copy(alpha = 0.5f),
-                topLeft = Offset(-2.5.dp.toPx(), h * 0.22f),
+                topLeft = Offset(0f, h * 0.22f),
                 size = Size(btnWidth, volBtnH),
                 cornerRadius = CornerRadius(1.5.dp.toPx())
             )
             drawRoundRect(
                 color = outline.copy(alpha = 0.5f),
-                topLeft = Offset(-2.5.dp.toPx(), h * 0.22f + volBtnH + 6.dp.toPx()),
+                topLeft = Offset(0f, h * 0.22f + volBtnH + 6.dp.toPx()),
                 size = Size(btnWidth, volBtnH),
                 cornerRadius = CornerRadius(1.5.dp.toPx())
             )
