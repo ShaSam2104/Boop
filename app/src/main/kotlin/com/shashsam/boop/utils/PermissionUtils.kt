@@ -9,6 +9,10 @@ import androidx.activity.compose.ManagedActivityResultLauncher
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 
 private const val TAG = "BoopPermissions"
@@ -60,6 +64,21 @@ fun allPermissionsGranted(context: Context): Boolean {
     }
     Log.d(TAG, "All permissions granted: $result")
     return result
+}
+
+/**
+ * Composable that returns a [MutableState] holding whether all required permissions
+ * are currently granted, initialised from the current context.
+ *
+ * Use with delegated `var` so the UI recomposes when the value changes:
+ * ```kotlin
+ * var permissionsGranted by rememberPermissionsState()
+ * ```
+ */
+@Composable
+fun rememberPermissionsState(): MutableState<Boolean> {
+    val context = LocalContext.current
+    return remember { mutableStateOf(allPermissionsGranted(context)) }
 }
 
 /**
