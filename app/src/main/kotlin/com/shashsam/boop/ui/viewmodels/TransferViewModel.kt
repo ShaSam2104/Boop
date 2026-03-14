@@ -17,10 +17,15 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 private const val TAG = "TransferViewModel"
+
+/** Time to wait for a Wi-Fi Direct connection before showing a timeout error. */
+private const val CONNECTION_TIMEOUT_MS = 10_000L
 
 /**
  * Aggregate UI state consumed by
@@ -34,9 +39,12 @@ private const val TAG = "TransferViewModel"
  * @param isNfcBroadcasting  `true` while the HCE service is broadcasting.
  * @param isNfcReading       `true` while the NFC reader is waiting for a tap.
  * @param isWifiConnecting   `true` while a Wi-Fi Direct connection is being established.
+ * @param isWifiConnected    `true` after Wi-Fi Direct connection is established.
  * @param transferComplete   `true` after a transfer finishes successfully.
+ * @param transferredBytes   Bytes transferred so far (for display during transfer).
+ * @param totalBytes         Total bytes to transfer (for display during transfer).
  * @param savedFileUri       URI of the received file (Receiver side, post-completion).
- * @param error              Non-null when a terminal error has occurred.
+ * @param error              Non-null when a terminal error has occurred; drives the error dialog.
  * @param receivedPayload   Non-null when the NFC reader has extracted [ConnectionDetails]; drives the payload BottomSheet.
  */
 data class TransferUiState(
@@ -48,7 +56,10 @@ data class TransferUiState(
     val isNfcBroadcasting: Boolean = false,
     val isNfcReading: Boolean = false,
     val isWifiConnecting: Boolean = false,
+    val isWifiConnected: Boolean = false,
     val transferComplete: Boolean = false,
+    val transferredBytes: Long = 0L,
+    val totalBytes: Long = 0L,
     val savedFileUri: Uri? = null,
     val error: String? = null,
     val receivedPayload: ConnectionDetails? = null
@@ -122,18 +133,18 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
 
                     is WifiDirectState.Connected -> {
                         appendLog("✅ Wi-Fi Direct connected (GO: ${wifiState.groupOwnerAddress})")
-                        _uiState.update { it.copy(isWifiConnecting = false) }
+                        _uiState.update { it.copy(isWifiConnecting = false, isWifiConnected = true) }
                     }
 
                     is WifiDirectState.Disconnected -> {
                         appendLog("🔌 Wi-Fi Direct disconnected.")
-                        _uiState.update { it.copy(isWifiConnecting = false) }
+                        _uiState.update { it.copy(isWifiConnecting = false, isWifiConnected = false) }
                     }
 
                     is WifiDirectState.Error -> {
                         appendLog("❌ Wi-Fi Direct error: ${wifiState.message}", isError = true)
                         _uiState.update {
-                            it.copy(isWifiConnecting = false, error = wifiState.message)
+                            it.copy(isWifiConnecting = false, isWifiConnected = false, error = wifiState.message)
                         }
                     }
                 }
@@ -225,17 +236,42 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
         val context = getApplication<Application>()
         transferJob?.cancel()
         transferJob = viewModelScope.launch {
-            // 1. Initiate Wi-Fi Direct connection to the Sender
-            val connected = wifiDirectManager.connect(details.mac)
-            if (!connected) {
-                appendLog("❌ Wi-Fi Direct connection failed.", isError = true)
+            // 1. Queue Wi-Fi Direct connection request to the Sender
+            val queued = wifiDirectManager.connect(details.mac)
+            if (!queued) {
+                appendLog("❌ Wi-Fi Direct connection request rejected.", isError = true)
+                _uiState.update { it.copy(error = "Wi-Fi Direct connection request was rejected.") }
                 return@launch
             }
 
-            // 2. Wait for WIFI_P2P_CONNECTION_CHANGED to deliver Connected state.
+            // 2. Wait for Connected state with a 10 s timeout.
             appendLog("⏳ Establishing Wi-Fi Direct link…")
+            val result = withTimeoutOrNull(CONNECTION_TIMEOUT_MS) {
+                wifiDirectManager.state.first { state ->
+                    state is WifiDirectState.Connected || state is WifiDirectState.Error
+                }
+            }
 
-            // 3. Open TCP receive on the Group Owner IP
+            when {
+                result == null -> {
+                    Log.w(TAG, "Wi-Fi Direct connection timed out after ${CONNECTION_TIMEOUT_MS}ms")
+                    appendLog("❌ Connection timed out.", isError = true)
+                    _uiState.update {
+                        it.copy(
+                            isWifiConnecting = false,
+                            error = "Wi-Fi Direct connection timed out. Move closer and try again."
+                        )
+                    }
+                    return@launch
+                }
+                result is WifiDirectState.Error -> {
+                    // Error state already handled by observeWifiDirectState; just bail.
+                    return@launch
+                }
+            }
+
+            // 3. Connected — open TCP receive on the Group Owner IP.
+            Log.d(TAG, "Wi-Fi Direct connected — starting TCP receive on ${GROUP_OWNER_IP}:${details.port}")
             appendLog("🚀 Starting file receive (${GROUP_OWNER_IP}:${details.port})…")
             _uiState.update {
                 it.copy(isTransferring = true, transferProgress = 0f, transferComplete = false, receivedPayload = null)
@@ -275,12 +311,18 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
             }
 
             else -> {
-                _uiState.update { it.copy(transferProgress = progress.fraction) }
-                val pct = (progress.fraction * 100).toInt()
-                val lastLoggedPct = ((_uiState.value.transferProgress - progress.fraction) * 100).toInt()
-                // Log at every 10% boundary (only when crossing a new threshold)
-                if (pct / 10 != lastLoggedPct / 10) {
-                    Log.d(TAG, "Transfer $pct% (${progress.bytesTransferred}/${progress.totalBytes})")
+                val prevPct = (_uiState.value.transferProgress * 100).toInt()
+                _uiState.update {
+                    it.copy(
+                        transferProgress = progress.fraction,
+                        transferredBytes = progress.bytesTransferred,
+                        totalBytes = progress.totalBytes
+                    )
+                }
+                val newPct = (progress.fraction * 100).toInt()
+                // Log at every 10% boundary
+                if (newPct / 10 != prevPct / 10) {
+                    Log.d(TAG, "Transfer $newPct% (${progress.bytesTransferred}/${progress.totalBytes})")
                 }
             }
         }
@@ -289,6 +331,11 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
     /** Dismisses the NFC payload BottomSheet by clearing [TransferUiState.receivedPayload]. */
     fun dismissPayloadSheet() {
         _uiState.update { it.copy(receivedPayload = null) }
+    }
+
+    /** Dismisses the error dialog by clearing [TransferUiState.error]. */
+    fun dismissError() {
+        _uiState.update { it.copy(error = null) }
     }
 
     /**

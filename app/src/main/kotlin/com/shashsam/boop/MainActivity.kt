@@ -151,6 +151,9 @@ class MainActivity : ComponentActivity() {
                         },
                         onDismissPayload = {
                             viewModel.dismissPayloadSheet()
+                        },
+                        onDismissError = {
+                            viewModel.dismissError()
                         }
                     )
                 }

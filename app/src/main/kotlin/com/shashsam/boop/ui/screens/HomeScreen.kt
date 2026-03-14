@@ -30,8 +30,10 @@ import androidx.compose.material.icons.filled.Nfc
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
@@ -42,6 +44,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -66,6 +69,7 @@ import com.shashsam.boop.R
 import com.shashsam.boop.nfc.ConnectionDetails
 import com.shashsam.boop.ui.components.NfcAntennaGuide
 import com.shashsam.boop.ui.components.rememberNfcAntennaPosition
+import com.shashsam.boop.utils.toFormattedSize
 import com.shashsam.boop.ui.theme.BoopTheme
 import com.shashsam.boop.ui.theme.SuccessGreen
 import com.shashsam.boop.ui.viewmodels.TransferUiState
@@ -91,6 +95,7 @@ data class LogEntry(
  * @param onReceiveClick     Callback for the "Receive File" FAB.
  * @param onResetClick       Callback to reset the transfer state.
  * @param onDismissPayload   Callback to dismiss the NFC payload BottomSheet.
+ * @param onDismissError     Callback to dismiss the error dialog.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -101,6 +106,7 @@ fun HomeScreen(
     onReceiveClick: () -> Unit,
     onResetClick: () -> Unit,
     onDismissPayload: () -> Unit = {},
+    onDismissError: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     Log.d(TAG, "HomeScreen recompose — permissionsGranted=$permissionsGranted logSize=${transferUiState.statusLog.size}")
@@ -201,6 +207,34 @@ fun HomeScreen(
     // ── NFC Payload BottomSheet ────────────────────────────────────────────
     transferUiState.receivedPayload?.let { payload ->
         NfcPayloadBottomSheet(payload = payload, onDismiss = onDismissPayload)
+    }
+
+    // ── Error Dialog ────────────────────────────────────────────────────
+    transferUiState.error?.let { errorMessage ->
+        AlertDialog(
+            onDismissRequest = onDismissError,
+            icon = {
+                Icon(
+                    imageVector = Icons.Filled.Warning,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error
+                )
+            },
+            title = {
+                Text(
+                    text = "Connection Error",
+                    fontWeight = FontWeight.ExtraBold
+                )
+            },
+            text = {
+                Text(text = errorMessage)
+            },
+            confirmButton = {
+                TextButton(onClick = onDismissError) {
+                    Text("OK", fontWeight = FontWeight.Bold)
+                }
+            }
+        )
     }
 }
 
@@ -312,7 +346,8 @@ private fun NfcWifiStatusRow(
     modifier: Modifier = Modifier
 ) {
     AnimatedVisibility(
-        visible = uiState.isNfcBroadcasting || uiState.isNfcReading || uiState.isWifiConnecting,
+        visible = uiState.isNfcBroadcasting || uiState.isNfcReading
+                || uiState.isWifiConnecting || uiState.isWifiConnected,
         enter = fadeIn() + slideInVertically(),
         exit = fadeOut()
     ) {
@@ -330,14 +365,44 @@ private fun NfcWifiStatusRow(
                     modifier = Modifier.weight(1f)
                 )
             }
-            if (uiState.isWifiConnecting) {
-                StatusChip(
-                    icon = Icons.Filled.Wifi,
-                    label = "Wi-Fi Direct…",
-                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                    modifier = Modifier.weight(1f)
-                )
+            // Wi-Fi Direct: CircularProgressIndicator while connecting, checkmark when connected
+            when {
+                uiState.isWifiConnecting -> {
+                    Card(
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.secondaryContainer
+                        )
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                strokeWidth = 2.dp,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer
+                            )
+                            Text(
+                                text = "Connecting…",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer
+                            )
+                        }
+                    }
+                }
+                uiState.isWifiConnected -> {
+                    StatusChip(
+                        icon = Icons.Filled.CheckCircle,
+                        label = "Connected",
+                        containerColor = SuccessGreen.copy(alpha = 0.15f),
+                        contentColor = SuccessGreen,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
             }
             // NFC antenna location info toggle
             if (uiState.isNfcBroadcasting || uiState.isNfcReading) {
@@ -424,6 +489,15 @@ private fun TransferProgressCard(
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.ExtraBold,
                     color = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+            }
+            // Bytes transferred display
+            if (uiState.isTransferring && uiState.totalBytes > 0L) {
+                Text(
+                    text = "${uiState.transferredBytes.toFormattedSize()} / ${uiState.totalBytes.toFormattedSize()}",
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.75f)
                 )
             }
             Spacer(modifier = Modifier.height(8.dp))
