@@ -27,7 +27,6 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Nfc
-import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
@@ -222,7 +221,7 @@ fun HomeScreen(
             },
             title = {
                 Text(
-                    text = "Connection Error",
+                    text = "Error",
                     fontWeight = FontWeight.ExtraBold
                 )
             },

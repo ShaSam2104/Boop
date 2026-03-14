@@ -256,6 +256,8 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
                 result == null -> {
                     Log.w(TAG, "Wi-Fi Direct connection timed out after ${CONNECTION_TIMEOUT_MS}ms")
                     appendLog("❌ Connection timed out.", isError = true)
+                    // Clean up the stale P2P connection request.
+                    wifiDirectManager.disconnect()
                     _uiState.update {
                         it.copy(
                             isWifiConnecting = false,
