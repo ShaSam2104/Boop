@@ -17,6 +17,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import com.shashsam.boop.nfc.NfcReader
+import com.shashsam.boop.nfc.NfcReaderState
 import com.shashsam.boop.ui.screens.HomeScreen
 import com.shashsam.boop.ui.theme.BoopTheme
 import com.shashsam.boop.ui.viewmodels.TransferViewModel
@@ -95,6 +96,26 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
+                    // ── Observe NFC Reader Mode state ──────────────────────
+                    LaunchedEffect(Unit) {
+                        nfcReader.state.collect { readerState ->
+                            when (readerState) {
+                                is NfcReaderState.Connected -> {
+                                    Log.d(TAG, "NFC reader mode payload: ${readerState.details}")
+                                    // Reset first to prevent double-processing on rapid taps
+                                    nfcReader.reset()
+                                    nfcReader.disableReaderMode(this@MainActivity)
+                                    viewModel.onNfcPayloadReceived(readerState.details)
+                                }
+                                is NfcReaderState.Error -> {
+                                    Log.w(TAG, "NFC reader mode error: ${readerState.message}")
+                                    viewModel.appendLog("❌ NFC: ${readerState.message}", isError = true)
+                                }
+                                else -> { /* Idle / Reading — no-op */ }
+                            }
+                        }
+                    }
+
                     HomeScreen(
                         permissionsGranted = permissionsGranted,
                         transferUiState = uiState,
@@ -127,6 +148,9 @@ class MainActivity : ComponentActivity() {
                         onResetClick = {
                             Log.d(TAG, "onResetClick")
                             viewModel.reset()
+                        },
+                        onDismissPayload = {
+                            viewModel.dismissPayloadSheet()
                         }
                     )
                 }

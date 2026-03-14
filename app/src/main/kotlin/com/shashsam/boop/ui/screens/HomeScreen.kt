@@ -7,6 +7,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
+import androidx.compose.ui.draw.alpha
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -34,11 +35,13 @@ import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -53,6 +56,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.shashsam.boop.R
+import com.shashsam.boop.nfc.ConnectionDetails
 import com.shashsam.boop.ui.theme.BoopTheme
 import com.shashsam.boop.ui.theme.SuccessGreen
 import com.shashsam.boop.ui.viewmodels.TransferUiState
@@ -74,8 +78,8 @@ data class LogEntry(
  * @param transferUiState    Current transfer pipeline state from [TransferViewModel][com.shashsam.boop.ui.viewmodels.TransferViewModel].
  * @param onSendClick        Callback for the "Send File" FAB (also launches the file picker).
  * @param onReceiveClick     Callback for the "Receive File" FAB.
- * @param onFileSelected     Callback invoked with the file [android.net.Uri] after the file picker returns.
  * @param onResetClick       Callback to reset the transfer state.
+ * @param onDismissPayload   Callback to dismiss the NFC payload BottomSheet.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -85,6 +89,7 @@ fun HomeScreen(
     onSendClick: () -> Unit,
     onReceiveClick: () -> Unit,
     onResetClick: () -> Unit,
+    onDismissPayload: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     Log.d(TAG, "HomeScreen recompose — permissionsGranted=$permissionsGranted logSize=${transferUiState.statusLog.size}")
@@ -149,6 +154,109 @@ fun HomeScreen(
             )
         }
     }
+
+    // ── NFC Payload BottomSheet ────────────────────────────────────────────
+    transferUiState.receivedPayload?.let { payload ->
+        NfcPayloadBottomSheet(payload = payload, onDismiss = onDismissPayload)
+    }
+}
+
+// ─── NFC Payload BottomSheet ────────────────────────────────────────────────
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun NfcPayloadBottomSheet(
+    payload: ConnectionDetails,
+    onDismiss: () -> Unit
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = MaterialTheme.colorScheme.surface
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp)
+                .padding(bottom = 36.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            // Title
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Nfc,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(28.dp)
+                )
+                Text(
+                    text = "NFC Payload Received",
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
+
+            // JSON payload card
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant
+                )
+            ) {
+                Text(
+                    text = buildPayloadJsonString(payload),
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(16.dp)
+                )
+            }
+
+            // Individual fields
+            PayloadDetailRow(label = "SSID", value = payload.ssid)
+            PayloadDetailRow(label = "Token", value = payload.token)
+            PayloadDetailRow(label = "MAC", value = payload.mac)
+            PayloadDetailRow(label = "Port", value = payload.port.toString())
+        }
+    }
+}
+
+@Composable
+private fun PayloadDetailRow(label: String, value: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Text(
+            text = value.ifEmpty { "—" },
+            style = MaterialTheme.typography.bodyLarge,
+            fontWeight = FontWeight.Bold,
+            fontFamily = FontFamily.Monospace,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+    }
+}
+
+private fun buildPayloadJsonString(payload: ConnectionDetails): String {
+    return org.json.JSONObject().apply {
+        put("ssid", payload.ssid)
+        put("token", payload.token)
+    }.toString(2)
 }
 
 // ─── NFC / Wi-Fi Status Row ──────────────────────────────────────────────────
@@ -356,14 +464,17 @@ private fun ActionButtonRow(
         modifier = modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(16.dp)
     ) {
+        val isActionable = enabled && !isTransferring
+
         // Send File FAB
         ExtendedFloatingActionButton(
             onClick = {
-                Log.d(TAG, "Send File clicked")
-                onSendClick()
+                if (isActionable) {
+                    Log.d(TAG, "Send File clicked")
+                    onSendClick()
+                }
             },
             expanded = true,
-            enabled = enabled && !isTransferring,
             icon = {
                 Icon(
                     imageVector = Icons.Filled.CloudUpload,
@@ -378,27 +489,29 @@ private fun ActionButtonRow(
                     fontFamily = FontFamily.Default
                 )
             },
-            containerColor = if (enabled && !isTransferring)
+            containerColor = if (isActionable)
                 MaterialTheme.colorScheme.primary
             else
                 MaterialTheme.colorScheme.surfaceVariant,
-            contentColor = if (enabled && !isTransferring)
+            contentColor = if (isActionable)
                 MaterialTheme.colorScheme.onPrimary
             else
                 MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier
                 .weight(1f)
                 .height(64.dp)
+                .alpha(if (isActionable) 1f else 0.5f)
         )
 
         // Receive File FAB
         ExtendedFloatingActionButton(
             onClick = {
-                Log.d(TAG, "Receive File clicked")
-                onReceiveClick()
+                if (isActionable) {
+                    Log.d(TAG, "Receive File clicked")
+                    onReceiveClick()
+                }
             },
             expanded = true,
-            enabled = enabled && !isTransferring,
             icon = {
                 Icon(
                     imageVector = Icons.Filled.CloudDownload,
@@ -413,17 +526,18 @@ private fun ActionButtonRow(
                     fontFamily = FontFamily.Default
                 )
             },
-            containerColor = if (enabled && !isTransferring)
+            containerColor = if (isActionable)
                 MaterialTheme.colorScheme.secondary
             else
                 MaterialTheme.colorScheme.surfaceVariant,
-            contentColor = if (enabled && !isTransferring)
+            contentColor = if (isActionable)
                 MaterialTheme.colorScheme.onSecondary
             else
                 MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier
                 .weight(1f)
                 .height(64.dp)
+                .alpha(if (isActionable) 1f else 0.5f)
         )
     }
 }

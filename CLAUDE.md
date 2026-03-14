@@ -33,8 +33,8 @@ Boop is an Android P2P file-sharing app. Two devices share files by tapping toge
 
 ### Transfer Flow
 
-1. **Sender** picks a file via MediaStore → `BoopHceService` (HCE) emits an NDEF message containing Wi-Fi Direct MAC + TCP port as JSON
-2. **Receiver** reads NDEF via `NfcReader` (foreground dispatch or reader mode) → extracts `ConnectionDetails`
+1. **Sender** picks a file via MediaStore → `BoopHceService` (HCE) emits an NDEF message containing Wi-Fi Direct MAC, TCP port, SSID, and token as JSON
+2. **Receiver** reads NDEF via `NfcReader` (reader mode or foreground dispatch) → extracts `ConnectionDetails` → displays payload in M3 BottomSheet
 3. Wi-Fi Direct group negotiation: Sender = Group Owner (GO IP: `192.168.49.1`), Receiver = peer
 4. TCP socket stream: Sender runs `ServerSocket`, Receiver connects and writes to MediaStore
 5. Wire format: `[nameLen][name][size][mimeLen][mime][bytes...]` in 16 KB chunks
@@ -43,13 +43,13 @@ Boop is an Android P2P file-sharing app. Two devices share files by tapping toge
 
 | Component | Role |
 |---|---|
-| `MainActivity` | Entry point, NFC foreground dispatch, permission launcher, Compose host |
+| `MainActivity` | Entry point, NFC foreground dispatch, reader mode state observer, permission launcher, Compose host |
 | `nfc/BoopHceService` | HCE service responding to SELECT AID APDU with NDEF payload (AID: `F0426F6F7001`) |
 | `nfc/NfcReader` | NFC reader mode + foreground dispatch; parses NDEF → `ConnectionDetails` |
 | `wifi/WifiDirectManager` | Coroutine-friendly wrapper around `WifiP2pManager`; exposes `StateFlow<WifiDirectState>` |
 | `transfer/TransferManager` | Singleton with `sendFile()` / `receiveFile()` suspend functions; returns `Flow<TransferProgress>` |
 | `ui/viewmodels/TransferViewModel` | Owns full transfer pipeline; produces `TransferUiState` |
-| `ui/screens/HomeScreen` | Status banner, Send/Receive FABs, progress indicator, activity log |
+| `ui/screens/HomeScreen` | Status banner, Send/Receive FABs, progress indicator, activity log, NFC payload BottomSheet |
 | `utils/PermissionUtils` | Version-aware runtime permission helpers (API 26–34 differences) |
 | `utils/FilePicker` | Compose wrapper around `OpenDocument` contract; resolves file metadata |
 
@@ -69,6 +69,8 @@ Boop is an Android P2P file-sharing app. Two devices share files by tapping toge
 - **Group Owner IP** is always `192.168.49.1` on Android; do not discover dynamically
 - **MediaStore.Downloads** is API 29+ — use `Environment.getExternalStoragePublicDirectory()` with `WRITE_EXTERNAL_STORAGE` on API 26–28
 - **`dl.google.com`** must be allowlisted in sandboxed CI for SDK component downloads
+- **Android NFC classes are stubs in JVM unit tests** — use `NfcReader.parsePayloadJson()` for direct JSON parsing tests; `NdefMessage`/`NdefRecord` require Robolectric or instrumented tests
+- **`ExtendedFloatingActionButton` has no `enabled` param** in M3 1.2.1 — gate via `onClick` logic and visual state through `containerColor`/`contentColor`
 
 ## Key Constants
 
@@ -76,6 +78,7 @@ Boop is an Android P2P file-sharing app. Two devices share files by tapping toge
 |---|---|
 | HCE AID | `F0426F6F7001` |
 | NDEF MIME type | `application/com.shashsam.boop` |
+| NDEF JSON fields | `mac`, `port`, `ssid`, `token` |
 | Wi-Fi Direct GO IP | `192.168.49.1` |
 | TCP transfer port | `8765` |
 
@@ -83,3 +86,7 @@ Boop is an Android P2P file-sharing app. Two devices share files by tapping toge
 # Review
 
 All the code changes you make will be reviewed by codex so maintain a thorough code quality.
+
+# Update
+
+Aggressively update the claude.md file after every session of edit 

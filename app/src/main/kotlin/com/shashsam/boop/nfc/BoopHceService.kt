@@ -57,6 +57,19 @@ class BoopHceService : HostApduService() {
          * Set alongside [connectionMac].
          */
         @Volatile var connectionPort: Int = DEFAULT_PORT
+
+        /**
+         * Wi-Fi Direct group SSID (e.g. "DIRECT-xx-DeviceName").
+         * Set by [WifiDirectManager][com.shashsam.boop.wifi.WifiDirectManager]
+         * once the group is created.
+         */
+        @Volatile var connectionSsid: String = ""
+
+        /**
+         * Pre-shared key or connection token for the Wi-Fi Direct group.
+         * Set alongside [connectionSsid].
+         */
+        @Volatile var connectionToken: String = ""
     }
 
     override fun processCommandApdu(commandApdu: ByteArray, extras: Bundle?): ByteArray {
@@ -86,7 +99,7 @@ class BoopHceService : HostApduService() {
             return UNKNOWN_CMD_SW
         }
 
-        Log.d(TAG, "AID matched — building NDEF payload for mac=$connectionMac port=$connectionPort")
+        Log.d(TAG, "AID matched — building NDEF payload for mac=$connectionMac port=$connectionPort ssid=$connectionSsid")
         return try {
             val ndefBytes = buildNdefPayload()
             Log.d(TAG, "NDEF payload (${ndefBytes.size} bytes): ${ndefBytes.toHex()}")
@@ -110,6 +123,8 @@ class BoopHceService : HostApduService() {
         val jsonObj = org.json.JSONObject().apply {
             put("mac", connectionMac)
             put("port", connectionPort)
+            put("ssid", connectionSsid)
+            put("token", connectionToken)
         }
         val json = jsonObj.toString()
         Log.d(TAG, "NDEF JSON payload: $json")
