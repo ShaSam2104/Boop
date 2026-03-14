@@ -29,12 +29,17 @@ data class FileMetadata(
      * Human-readable file size (e.g. `"12.3 MB"`).
      */
     val formattedSize: String
-        get() = when {
-            size >= 1_073_741_824L -> "%.1f GB".format(size / 1_073_741_824.0)
-            size >= 1_048_576L     -> "%.1f MB".format(size / 1_048_576.0)
-            size >= 1_024L         -> "%.1f KB".format(size / 1_024.0)
-            else                   -> "$size B"
-        }
+        get() = size.toFormattedSize()
+}
+
+/**
+ * Converts a byte count to a human-readable string (e.g. `"12.3 MB"`).
+ */
+fun Long.toFormattedSize(): String = when {
+    this >= 1_073_741_824L -> "%.1f GB".format(this / 1_073_741_824.0)
+    this >= 1_048_576L     -> "%.1f MB".format(this / 1_048_576.0)
+    this >= 1_024L         -> "%.1f KB".format(this / 1_024.0)
+    else                   -> "$this B"
 }
 
 /**

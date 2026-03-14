@@ -13,6 +13,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import com.shashsam.boop.nfc.NfcReader
@@ -87,9 +88,11 @@ class MainActivity : ComponentActivity() {
                     }
 
                     // Request permissions on first launch if not already granted
-                    if (!permissionsGranted) {
-                        Log.d(TAG, "Permissions not yet granted — requesting…")
-                        permissionLauncher.launch(requiredPermissions())
+                    LaunchedEffect(permissionsGranted) {
+                        if (!permissionsGranted) {
+                            Log.d(TAG, "Permissions not yet granted — requesting…")
+                            permissionLauncher.launch(requiredPermissions())
+                        }
                     }
 
                     HomeScreen(

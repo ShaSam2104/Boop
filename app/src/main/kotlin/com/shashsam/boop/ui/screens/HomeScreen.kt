@@ -258,7 +258,7 @@ private fun TransferProgressCard(
             }
             Spacer(modifier = Modifier.height(8.dp))
             LinearProgressIndicator(
-                progress = { uiState.transferProgress },
+                progress = uiState.transferProgress,
                 modifier = Modifier.fillMaxWidth(),
                 color = MaterialTheme.colorScheme.primary,
                 trackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)

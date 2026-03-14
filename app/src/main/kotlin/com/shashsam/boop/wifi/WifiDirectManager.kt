@@ -242,9 +242,12 @@ class WifiDirectManager(private val context: Context) {
             mgr.createGroup(ch, object : WifiP2pManager.ActionListener {
                 override fun onSuccess() {
                     Log.d(TAG, "createGroup onSuccess")
-                    val mac = _ownDeviceMac.value ?: "00:00:00:00:00:00"
+                    val mac = _ownDeviceMac.value
+                    if (mac == null) {
+                        Log.w(TAG, "Own MAC not yet received from WIFI_P2P_THIS_DEVICE_CHANGED — using placeholder")
+                    }
                     _state.value = WifiDirectState.GroupCreated(
-                        deviceMac = mac,
+                        deviceMac = mac ?: "00:00:00:00:00:00",
                         groupOwnerAddress = GROUP_OWNER_IP
                     )
                     if (cont.isActive) cont.resume(true)

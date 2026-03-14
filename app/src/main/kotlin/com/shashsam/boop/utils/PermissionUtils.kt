@@ -12,8 +12,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.core.content.ContextCompat
 import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.ContextCompat
 
 private const val TAG = "BoopPermissions"
 

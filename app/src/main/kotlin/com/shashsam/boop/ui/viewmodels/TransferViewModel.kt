@@ -9,6 +9,7 @@ import com.shashsam.boop.nfc.BoopHceService
 import com.shashsam.boop.nfc.ConnectionDetails
 import com.shashsam.boop.transfer.TransferManager
 import com.shashsam.boop.ui.screens.LogEntry
+import com.shashsam.boop.utils.toFormattedSize
 import com.shashsam.boop.wifi.GROUP_OWNER_IP
 import com.shashsam.boop.wifi.WifiDirectManager
 import com.shashsam.boop.wifi.WifiDirectState
@@ -272,8 +273,9 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
             else -> {
                 _uiState.update { it.copy(transferProgress = progress.fraction) }
                 val pct = (progress.fraction * 100).toInt()
-                // Log every 10% to avoid flooding Logcat
-                if (pct % 10 == 0) {
+                val lastLoggedPct = ((_uiState.value.transferProgress - progress.fraction) * 100).toInt()
+                // Log at every 10% boundary (only when crossing a new threshold)
+                if (pct / 10 != lastLoggedPct / 10) {
                     Log.d(TAG, "Transfer $pct% (${progress.bytesTransferred}/${progress.totalBytes})")
                 }
             }
@@ -303,16 +305,5 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
         super.onCleared()
         wifiDirectManager.close()
         Log.d(TAG, "ViewModel cleared")
-    }
-
-    // ─── Helpers ──────────────────────────────────────────────────────────────
-
-    companion object {
-        private fun Long.toFormattedSize(): String = when {
-            this >= 1_073_741_824L -> "%.1f GB".format(this / 1_073_741_824.0)
-            this >= 1_048_576L     -> "%.1f MB".format(this / 1_048_576.0)
-            this >= 1_024L         -> "%.1f KB".format(this / 1_024.0)
-            else                   -> "$this B"
-        }
     }
 }

@@ -246,8 +246,6 @@ object TransferManager {
         while (source.read(buffer).also { read = it } != -1) {
             destination.write(buffer, 0, read)
             bytesTransferred += read
-            val pct = if (totalSize > 0) bytesTransferred * 100 / totalSize else 0
-            Log.d(TAG, "Progress: $bytesTransferred/$totalSize bytes ($pct%)")
             onProgress(bytesTransferred)
         }
         destination.flush()

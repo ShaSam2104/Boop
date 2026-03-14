@@ -107,7 +107,11 @@ class BoopHceService : HostApduService() {
      * 2. An Android Application Record (AAR) ensuring Boop is launched on the Receiver.
      */
     private fun buildNdefPayload(): ByteArray {
-        val json = """{"mac":"$connectionMac","port":$connectionPort}"""
+        val jsonObj = org.json.JSONObject().apply {
+            put("mac", connectionMac)
+            put("port", connectionPort)
+        }
+        val json = jsonObj.toString()
         Log.d(TAG, "NDEF JSON payload: $json")
 
         val mimeRecord = NdefRecord.createMime(

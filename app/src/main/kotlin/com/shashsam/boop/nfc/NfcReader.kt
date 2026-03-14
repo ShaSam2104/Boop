@@ -250,7 +250,8 @@ class NfcReader(private val nfcAdapter: NfcAdapter?) {
         val rawMessages = intent.getParcelableArrayExtra(NfcAdapter.EXTRA_NDEF_MESSAGES)
             ?: return null
         for (raw in rawMessages) {
-            val details = parseNdefMessage(raw as NdefMessage)
+            val ndefMessage = raw as? NdefMessage ?: continue
+            val details = parseNdefMessage(ndefMessage)
             if (details != null) return details
         }
         return null
