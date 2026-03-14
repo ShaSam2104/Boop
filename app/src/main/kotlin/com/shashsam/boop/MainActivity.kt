@@ -102,9 +102,10 @@ class MainActivity : ComponentActivity() {
                             when (readerState) {
                                 is NfcReaderState.Connected -> {
                                     Log.d(TAG, "NFC reader mode payload: ${readerState.details}")
-                                    viewModel.onNfcPayloadReceived(readerState.details)
-                                    nfcReader.disableReaderMode(this@MainActivity)
+                                    // Reset first to prevent double-processing on rapid taps
                                     nfcReader.reset()
+                                    nfcReader.disableReaderMode(this@MainActivity)
+                                    viewModel.onNfcPayloadReceived(readerState.details)
                                 }
                                 is NfcReaderState.Error -> {
                                     Log.w(TAG, "NFC reader mode error: ${readerState.message}")

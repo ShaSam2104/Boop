@@ -53,7 +53,8 @@ fun Long.toFormattedSize(): String = when {
  * val picker = rememberFilePicker { metadata ->
  *     if (metadata != null) viewModel.startSending(metadata.uri)
  * }
- * picker.launch(arrayOf("&#42;/&#42;"))
+ * val allTypes = arrayOf("*" + "/" + "*")
+ * picker.launch(allTypes)
  * ```
  */
 @Composable

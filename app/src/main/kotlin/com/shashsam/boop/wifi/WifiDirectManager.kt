@@ -34,12 +34,16 @@ sealed class WifiDirectState {
     /**
      * A P2P group was created and the HCE service is ready to advertise via NFC.
      *
-     * @param deviceMac        Wi-Fi Direct MAC of this (Sender) device.
+     * @param deviceMac         Wi-Fi Direct MAC of this (Sender) device.
      * @param groupOwnerAddress IP of the Group Owner (always [GROUP_OWNER_IP]).
+     * @param ssid              Wi-Fi Direct group network name (e.g. "DIRECT-xx-DeviceName").
+     * @param passphrase        Wi-Fi Direct group passphrase for WPA2.
      */
     data class GroupCreated(
         val deviceMac: String,
-        val groupOwnerAddress: String
+        val groupOwnerAddress: String,
+        val ssid: String = "",
+        val passphrase: String = ""
     ) : WifiDirectState()
 
     /** Connecting to the Sender (Receiver side). */
@@ -241,15 +245,20 @@ class WifiDirectManager(private val context: Context) {
         return suspendCancellableCoroutine { cont ->
             mgr.createGroup(ch, object : WifiP2pManager.ActionListener {
                 override fun onSuccess() {
-                    Log.d(TAG, "createGroup onSuccess")
+                    Log.d(TAG, "createGroup onSuccess — requesting group info")
                     val mac = _ownDeviceMac.value
                     if (mac == null) {
                         Log.w(TAG, "Own MAC not yet received from WIFI_P2P_THIS_DEVICE_CHANGED — using placeholder")
                     }
-                    _state.value = WifiDirectState.GroupCreated(
-                        deviceMac = mac ?: "00:00:00:00:00:00",
-                        groupOwnerAddress = GROUP_OWNER_IP
-                    )
+                    mgr.requestGroupInfo(ch) { group ->
+                        Log.d(TAG, "Group info: name=${group?.networkName} passphrase=${if (group?.passphrase != null) "***" else "null"}")
+                        _state.value = WifiDirectState.GroupCreated(
+                            deviceMac = mac ?: "00:00:00:00:00:00",
+                            groupOwnerAddress = GROUP_OWNER_IP,
+                            ssid = group?.networkName ?: "",
+                            passphrase = group?.passphrase ?: ""
+                        )
+                    }
                     if (cont.isActive) cont.resume(true)
                 }
 

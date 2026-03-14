@@ -104,9 +104,11 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
 
                     is WifiDirectState.GroupCreated -> {
                         appendLog("✅ Wi-Fi Direct group ready (MAC: ${wifiState.deviceMac})")
-                        // Publish MAC address for HCE so NFC broadcasts the correct address.
+                        // Publish connection details for HCE so NFC broadcasts them.
                         BoopHceService.connectionMac = wifiState.deviceMac
                         BoopHceService.connectionPort = BoopHceService.DEFAULT_PORT
+                        BoopHceService.connectionSsid = wifiState.ssid
+                        BoopHceService.connectionToken = wifiState.passphrase
                         _uiState.update {
                             it.copy(isWifiConnecting = false, isNfcBroadcasting = true)
                         }
@@ -236,7 +238,7 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
             // 3. Open TCP receive on the Group Owner IP
             appendLog("🚀 Starting file receive (${GROUP_OWNER_IP}:${details.port})…")
             _uiState.update {
-                it.copy(isTransferring = true, transferProgress = 0f, transferComplete = false)
+                it.copy(isTransferring = true, transferProgress = 0f, transferComplete = false, receivedPayload = null)
             }
             TransferManager.receiveFile(context, GROUP_OWNER_IP, details.port)
                 .collect { progress -> handleTransferProgress(progress) }

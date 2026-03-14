@@ -7,6 +7,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
+import androidx.compose.ui.draw.alpha
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -251,11 +252,11 @@ private fun PayloadDetailRow(label: String, value: String) {
     }
 }
 
-private fun buildPayloadJsonString(payload: ConnectionDetails): String = buildString {
-    appendLine("{")
-    appendLine("  \"ssid\": \"${payload.ssid}\",")
-    appendLine("  \"token\": \"${payload.token}\"")
-    append("}")
+private fun buildPayloadJsonString(payload: ConnectionDetails): String {
+    return org.json.JSONObject().apply {
+        put("ssid", payload.ssid)
+        put("token", payload.token)
+    }.toString(2)
 }
 
 // ─── NFC / Wi-Fi Status Row ──────────────────────────────────────────────────
@@ -499,6 +500,7 @@ private fun ActionButtonRow(
             modifier = Modifier
                 .weight(1f)
                 .height(64.dp)
+                .alpha(if (isActionable) 1f else 0.5f)
         )
 
         // Receive File FAB
@@ -535,6 +537,7 @@ private fun ActionButtonRow(
             modifier = Modifier
                 .weight(1f)
                 .height(64.dp)
+                .alpha(if (isActionable) 1f else 0.5f)
         )
     }
 }
