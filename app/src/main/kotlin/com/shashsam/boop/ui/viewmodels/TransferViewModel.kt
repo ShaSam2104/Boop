@@ -37,6 +37,7 @@ private const val TAG = "TransferViewModel"
  * @param transferComplete   `true` after a transfer finishes successfully.
  * @param savedFileUri       URI of the received file (Receiver side, post-completion).
  * @param error              Non-null when a terminal error has occurred.
+ * @param receivedPayload   Non-null when the NFC reader has extracted [ConnectionDetails]; drives the payload BottomSheet.
  */
 data class TransferUiState(
     val statusLog: List<LogEntry> = emptyList(),
@@ -49,7 +50,8 @@ data class TransferUiState(
     val isWifiConnecting: Boolean = false,
     val transferComplete: Boolean = false,
     val savedFileUri: Uri? = null,
-    val error: String? = null
+    val error: String? = null,
+    val receivedPayload: ConnectionDetails? = null
 )
 
 /**
@@ -214,9 +216,9 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
      * @param details Parsed [ConnectionDetails] from the NFC tap.
      */
     fun onNfcPayloadReceived(details: ConnectionDetails) {
-        Log.d(TAG, "onNfcPayloadReceived: mac=${details.mac} port=${details.port}")
+        Log.d(TAG, "onNfcPayloadReceived: mac=${details.mac} port=${details.port} ssid=${details.ssid} token=${details.token}")
         appendLog("📲 NFC tap! Sender MAC=${details.mac} Port=${details.port}")
-        _uiState.update { it.copy(isNfcReading = false) }
+        _uiState.update { it.copy(isNfcReading = false, receivedPayload = details) }
 
         val context = getApplication<Application>()
         transferJob?.cancel()
@@ -280,6 +282,11 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
                 }
             }
         }
+    }
+
+    /** Dismisses the NFC payload BottomSheet by clearing [TransferUiState.receivedPayload]. */
+    fun dismissPayloadSheet() {
+        _uiState.update { it.copy(receivedPayload = null) }
     }
 
     /**

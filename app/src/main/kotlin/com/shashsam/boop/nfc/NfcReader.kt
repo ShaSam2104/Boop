@@ -21,12 +21,16 @@ private const val TAG = "NfcReader"
 /**
  * Connection details extracted from the Sender's HCE NDEF payload.
  *
- * @param mac  Wi-Fi Direct MAC address of the Sender device.
- * @param port TCP port the Sender's [ServerSocket][java.net.ServerSocket] is listening on.
+ * @param mac   Wi-Fi Direct MAC address of the Sender device.
+ * @param port  TCP port the Sender's [ServerSocket][java.net.ServerSocket] is listening on.
+ * @param ssid  Wi-Fi Direct group SSID (e.g. "DIRECT-xx-DeviceName").
+ * @param token Pre-shared key or connection token for the Wi-Fi Direct group.
  */
 data class ConnectionDetails(
     val mac: String,
-    val port: Int
+    val port: Int,
+    val ssid: String = "",
+    val token: String = ""
 )
 
 /** Represents the current state of the NFC reader on the **Receiver** device. */
@@ -295,14 +299,8 @@ class NfcReader(private val nfcAdapter: NfcAdapter?) {
     }
 
     private fun parseJsonPayload(json: String): ConnectionDetails? {
-        return try {
-            Log.d(TAG, "Parsing JSON payload: $json")
-            val obj = JSONObject(json)
-            ConnectionDetails(mac = obj.getString("mac"), port = obj.getInt("port"))
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to parse JSON payload: $json", e)
-            null
-        }
+        Log.d(TAG, "Parsing JSON payload: $json")
+        return parsePayloadJson(json)
     }
 
     // ─── Companion helpers ────────────────────────────────────────────────────
@@ -323,6 +321,29 @@ class NfcReader(private val nfcAdapter: NfcAdapter?) {
                 0x00,                              // P2
                 BoopHceService.BOOP_AID.size.toByte()  // Lc
             ) + BoopHceService.BOOP_AID + byteArrayOf(0x00)  // Le = 0
+
+        /**
+         * Parses a JSON payload string into [ConnectionDetails].
+         *
+         * Exposed as `internal` to allow direct unit testing of the parsing logic
+         * without requiring Android NFC classes (which are stubs in plain JVM tests).
+         *
+         * @return [ConnectionDetails] on success, `null` on malformed or missing fields.
+         */
+        internal fun parsePayloadJson(json: String): ConnectionDetails? {
+            return try {
+                val obj = JSONObject(json)
+                ConnectionDetails(
+                    mac = obj.getString("mac"),
+                    port = obj.getInt("port"),
+                    ssid = obj.optString("ssid", ""),
+                    token = obj.optString("token", "")
+                )
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to parse JSON payload: $json", e)
+                null
+            }
+        }
 
         private fun ByteArray.toHex(): String =
             joinToString(separator = "") { "%02X".format(it) }

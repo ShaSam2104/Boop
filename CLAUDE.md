@@ -83,3 +83,7 @@ Boop is an Android P2P file-sharing app. Two devices share files by tapping toge
 # Review
 
 All the code changes you make will be reviewed by codex so maintain a thorough code quality.
+
+# Update
+
+Aggressively update the claude.md file after every session of edit 

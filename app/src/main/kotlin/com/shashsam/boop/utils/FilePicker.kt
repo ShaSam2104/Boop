@@ -49,12 +49,11 @@ fun Long.toFormattedSize(): String = when {
  * a file, or with `null` if the picker is cancelled or metadata resolution fails.
  *
  * ### Usage
- * ```kotlin
+ * ```
  * val picker = rememberFilePicker { metadata ->
  *     if (metadata != null) viewModel.startSending(metadata.uri)
  * }
- * // …
- * Button(onClick = { picker.launch(arrayOf("*/*")) }) { Text("Pick file") }
+ * picker.launch(arrayOf("&#42;/&#42;"))
  * ```
  */
 @Composable
