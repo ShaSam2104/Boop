@@ -5,6 +5,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -23,12 +24,15 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.CloudUpload
+import androidx.compose.material.icons.filled.Nfc
+import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -40,6 +44,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
@@ -50,6 +55,7 @@ import androidx.compose.ui.unit.sp
 import com.shashsam.boop.R
 import com.shashsam.boop.ui.theme.BoopTheme
 import com.shashsam.boop.ui.theme.SuccessGreen
+import com.shashsam.boop.ui.viewmodels.TransferUiState
 
 private const val TAG = "HomeScreen"
 
@@ -65,20 +71,23 @@ data class LogEntry(
  * Home screen — the app's primary Compose destination.
  *
  * @param permissionsGranted Whether all runtime permissions have been granted.
- * @param statusLog         Ordered list of status / activity log messages.
- * @param onSendClick       Callback for the "Send File" FAB.
- * @param onReceiveClick    Callback for the "Receive File" FAB.
+ * @param transferUiState    Current transfer pipeline state from [TransferViewModel][com.shashsam.boop.ui.viewmodels.TransferViewModel].
+ * @param onSendClick        Callback for the "Send File" FAB (also launches the file picker).
+ * @param onReceiveClick     Callback for the "Receive File" FAB.
+ * @param onFileSelected     Callback invoked with the file [android.net.Uri] after the file picker returns.
+ * @param onResetClick       Callback to reset the transfer state.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
     permissionsGranted: Boolean,
-    statusLog: List<LogEntry>,
+    transferUiState: TransferUiState,
     onSendClick: () -> Unit,
     onReceiveClick: () -> Unit,
+    onResetClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Log.d(TAG, "HomeScreen recompose — permissionsGranted=$permissionsGranted, logSize=${statusLog.size}")
+    Log.d(TAG, "HomeScreen recompose — permissionsGranted=$permissionsGranted logSize=${transferUiState.statusLog.size}")
 
     Scaffold(
         modifier = modifier,
@@ -110,18 +119,158 @@ fun HomeScreen(
             // ── System status banner ──────────────────────────────────────────
             SystemStatusBanner(permissionsGranted = permissionsGranted)
 
+            // ── NFC / Wi-Fi status indicators ─────────────────────────────────
+            NfcWifiStatusRow(uiState = transferUiState)
+
             // ── Action buttons ────────────────────────────────────────────────
             ActionButtonRow(
                 onSendClick = onSendClick,
                 onReceiveClick = onReceiveClick,
-                enabled = permissionsGranted
+                onResetClick = onResetClick,
+                enabled = permissionsGranted,
+                isSendMode = transferUiState.isSendMode,
+                isReceiveMode = transferUiState.isReceiveMode,
+                isTransferring = transferUiState.isTransferring
             )
+
+            // ── Transfer progress ─────────────────────────────────────────────
+            AnimatedVisibility(
+                visible = transferUiState.isTransferring || transferUiState.transferComplete,
+                enter = fadeIn() + slideInVertically(),
+                exit = fadeOut()
+            ) {
+                TransferProgressCard(uiState = transferUiState)
+            }
 
             // ── Activity log card ─────────────────────────────────────────────
             ActivityLogCard(
-                logEntries = statusLog,
+                logEntries = transferUiState.statusLog,
                 modifier = Modifier.weight(1f)
             )
+        }
+    }
+}
+
+// ─── NFC / Wi-Fi Status Row ──────────────────────────────────────────────────
+
+@Composable
+private fun NfcWifiStatusRow(
+    uiState: TransferUiState,
+    modifier: Modifier = Modifier
+) {
+    AnimatedVisibility(
+        visible = uiState.isNfcBroadcasting || uiState.isNfcReading || uiState.isWifiConnecting,
+        enter = fadeIn() + slideInVertically(),
+        exit = fadeOut()
+    ) {
+        Row(
+            modifier = modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            if (uiState.isNfcBroadcasting || uiState.isNfcReading) {
+                StatusChip(
+                    icon = Icons.Filled.Nfc,
+                    label = if (uiState.isNfcBroadcasting) "NFC: Broadcasting" else "NFC: Reading",
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+            if (uiState.isWifiConnecting) {
+                StatusChip(
+                    icon = Icons.Filled.Wifi,
+                    label = "Wi-Fi Direct…",
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun StatusChip(
+    icon: ImageVector,
+    label: String,
+    containerColor: Color,
+    contentColor: Color,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier,
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = containerColor)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = contentColor,
+                modifier = Modifier.size(18.dp)
+            )
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Bold,
+                color = contentColor
+            )
+        }
+    }
+}
+
+// ─── Transfer Progress Card ──────────────────────────────────────────────────
+
+@Composable
+private fun TransferProgressCard(
+    uiState: TransferUiState,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.primaryContainer
+        )
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = if (uiState.transferComplete) "Transfer Complete ✅" else "Transferring…",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+                Text(
+                    text = "${(uiState.transferProgress * 100).toInt()}%",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            LinearProgressIndicator(
+                progress = { uiState.transferProgress },
+                modifier = Modifier.fillMaxWidth(),
+                color = MaterialTheme.colorScheme.primary,
+                trackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
+            )
+            uiState.savedFileUri?.let { uri ->
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = "Saved to Downloads",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.75f)
+                )
+            }
         }
     }
 }
@@ -196,7 +345,11 @@ private fun SystemStatusBanner(
 private fun ActionButtonRow(
     onSendClick: () -> Unit,
     onReceiveClick: () -> Unit,
+    onResetClick: () -> Unit,
     enabled: Boolean,
+    isSendMode: Boolean,
+    isReceiveMode: Boolean,
+    isTransferring: Boolean,
     modifier: Modifier = Modifier
 ) {
     Row(
@@ -210,7 +363,7 @@ private fun ActionButtonRow(
                 onSendClick()
             },
             expanded = true,
-            enabled = enabled,
+            enabled = enabled && !isTransferring,
             icon = {
                 Icon(
                     imageVector = Icons.Filled.CloudUpload,
@@ -219,17 +372,17 @@ private fun ActionButtonRow(
             },
             text = {
                 Text(
-                    text = stringResource(R.string.send_file),
+                    text = if (isSendMode) "Sending…" else stringResource(R.string.send_file),
                     style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.ExtraBold,
                     fontFamily = FontFamily.Default
                 )
             },
-            containerColor = if (enabled)
+            containerColor = if (enabled && !isTransferring)
                 MaterialTheme.colorScheme.primary
             else
                 MaterialTheme.colorScheme.surfaceVariant,
-            contentColor = if (enabled)
+            contentColor = if (enabled && !isTransferring)
                 MaterialTheme.colorScheme.onPrimary
             else
                 MaterialTheme.colorScheme.onSurfaceVariant,
@@ -245,7 +398,7 @@ private fun ActionButtonRow(
                 onReceiveClick()
             },
             expanded = true,
-            enabled = enabled,
+            enabled = enabled && !isTransferring,
             icon = {
                 Icon(
                     imageVector = Icons.Filled.CloudDownload,
@@ -254,17 +407,17 @@ private fun ActionButtonRow(
             },
             text = {
                 Text(
-                    text = stringResource(R.string.receive_file),
+                    text = if (isReceiveMode) "Waiting…" else stringResource(R.string.receive_file),
                     style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.ExtraBold,
                     fontFamily = FontFamily.Default
                 )
             },
-            containerColor = if (enabled)
+            containerColor = if (enabled && !isTransferring)
                 MaterialTheme.colorScheme.secondary
             else
                 MaterialTheme.colorScheme.surfaceVariant,
-            contentColor = if (enabled)
+            contentColor = if (enabled && !isTransferring)
                 MaterialTheme.colorScheme.onSecondary
             else
                 MaterialTheme.colorScheme.onSurfaceVariant,
@@ -355,13 +508,35 @@ private fun HomeScreenGrantedPreview() {
     BoopTheme(dynamicColor = false) {
         HomeScreen(
             permissionsGranted = true,
-            statusLog = listOf(
-                LogEntry("NFC adapter ready."),
-                LogEntry("Wi-Fi Direct initialized."),
-                LogEntry("Waiting for tap…")
+            transferUiState = TransferUiState(
+                statusLog = listOf(
+                    LogEntry("NFC adapter ready."),
+                    LogEntry("Wi-Fi Direct initialized."),
+                    LogEntry("Waiting for tap…")
+                )
             ),
             onSendClick = {},
-            onReceiveClick = {}
+            onReceiveClick = {},
+            onResetClick = {}
+        )
+    }
+}
+
+@Preview(showBackground = true)
+@Composable
+private fun HomeScreenTransferringPreview() {
+    BoopTheme(dynamicColor = false) {
+        HomeScreen(
+            permissionsGranted = true,
+            transferUiState = TransferUiState(
+                statusLog = listOf(LogEntry("🚀 Transferring file…")),
+                isTransferring = true,
+                isSendMode = true,
+                transferProgress = 0.45f
+            ),
+            onSendClick = {},
+            onReceiveClick = {},
+            onResetClick = {}
         )
     }
 }
@@ -372,9 +547,10 @@ private fun HomeScreenAwaitingPreview() {
     BoopTheme(dynamicColor = false) {
         HomeScreen(
             permissionsGranted = false,
-            statusLog = emptyList(),
+            transferUiState = TransferUiState(),
             onSendClick = {},
-            onReceiveClick = {}
+            onReceiveClick = {},
+            onResetClick = {}
         )
     }
 }
