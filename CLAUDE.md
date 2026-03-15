@@ -33,9 +33,9 @@ Boop is an Android P2P file-sharing app. Two devices share files by tapping toge
 
 ### Transfer Flow
 
-1. **Sender** picks a file via MediaStore → `BoopHceService` (HCE) emits an NDEF message containing Wi-Fi Direct MAC, TCP port, SSID, and token as JSON
+1. **Sender** picks a file via MediaStore (or receives one via Android share sheet `ACTION_SEND`) → `BoopHceService` (HCE) emits an NDEF message containing Wi-Fi Direct MAC, TCP port, SSID, and token as JSON
 2. **Receiver** reads NDEF via `NfcReader` (reader mode or foreground dispatch) → extracts `ConnectionDetails` → displays payload in M3 BottomSheet
-3. Wi-Fi Direct group negotiation: Sender = Group Owner (GO IP: `192.168.49.1`), Receiver = peer
+3. Wi-Fi Direct group join: Sender = Group Owner (GO IP: `192.168.49.1`), Receiver joins via SSID + passphrase using `WifiP2pConfig.Builder` (API 29+)
 4. TCP socket stream: Sender runs `ServerSocket`, Receiver connects and writes to MediaStore
 5. Wire format: `[nameLen][name][size][mimeLen][mime][bytes...]` in 16 KB chunks
 
@@ -43,14 +43,15 @@ Boop is an Android P2P file-sharing app. Two devices share files by tapping toge
 
 | Component | Role |
 |---|---|
-| `MainActivity` | Entry point, NFC foreground dispatch, reader mode state observer, permission launcher, Compose host |
+| `MainActivity` | Entry point, NFC foreground dispatch, reader mode state observer, permission launcher, share intent handler, Compose host |
 | `nfc/BoopHceService` | HCE service responding to SELECT AID APDU with NDEF payload (AID: `F0426F6F7001`) |
 | `nfc/NfcReader` | NFC reader mode + foreground dispatch; parses NDEF → `ConnectionDetails` |
 | `wifi/WifiDirectManager` | Coroutine-friendly wrapper around `WifiP2pManager`; exposes `StateFlow<WifiDirectState>` |
 | `transfer/TransferManager` | Singleton with `sendFile()` / `receiveFile()` suspend functions; returns `Flow<TransferProgress>` |
 | `ui/viewmodels/TransferViewModel` | Owns full transfer pipeline; produces `TransferUiState` |
-| `ui/screens/HomeScreen` | Status banner, Send/Receive FABs, progress indicator, activity log, NFC payload BottomSheet |
+| `ui/screens/HomeScreen` | Status banner, Send/Receive FABs, progress indicator, bytes display, activity log, NFC payload BottomSheet, error dialog, NFC antenna guide |
 | `utils/PermissionUtils` | Version-aware runtime permission helpers (API 26–34 differences) |
+| `ui/components/NfcAntennaGuide` | Canvas visualization of NFC antenna location using `getNfcAntennaInfo()` (API 34+) with fallback |
 | `utils/FilePicker` | Compose wrapper around `OpenDocument` contract; resolves file metadata |
 
 ## Coding Conventions
@@ -67,6 +68,11 @@ Boop is an Android P2P file-sharing app. Two devices share files by tapping toge
 - **NEARBY_WIFI_DEVICES** required on API 33+ instead of `ACCESS_FINE_LOCATION` for Wi-Fi Direct — both paths must be handled
 - **HCE is one-way** — Sender can only respond to commands; Receiver always initiates the APDU exchange
 - **Group Owner IP** is always `192.168.49.1` on Android; do not discover dynamically
+- **Wi-Fi Direct MAC is anonymized** on Android 10+ — `group.owner.deviceAddress` returns `02:00:00:00:00:00` (a placeholder). Receiver must connect via SSID + passphrase using `WifiP2pConfig.Builder`, NOT by MAC address
+- **`flow {}` cannot emit from `withContext(Dispatchers.IO)`** — use `channelFlow {}` with `send()` for cross-context emission (TransferManager)
+- **`requestGroupInfo` may return null** right after `createGroup` onSuccess — retry with delay (300ms × 5 attempts) to wait for the group to be fully provisioned
+- **Stale Wi-Fi Direct groups** survive app crashes — always call `removeGroup()` before `createGroup()` to clear prior state
+- **Duplicate NFC callbacks** — reader mode and foreground dispatch both fire for the same tap. Guard `onNfcPayloadReceived` with state checks; ignore payloads in Send mode
 - **MediaStore.Downloads** is API 29+ — use `Environment.getExternalStoragePublicDirectory()` with `WRITE_EXTERNAL_STORAGE` on API 26–28
 - **`dl.google.com`** must be allowlisted in sandboxed CI for SDK component downloads
 - **Android NFC classes are stubs in JVM unit tests** — use `NfcReader.parsePayloadJson()` for direct JSON parsing tests; `NdefMessage`/`NdefRecord` require Robolectric or instrumented tests

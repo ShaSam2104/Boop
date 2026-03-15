@@ -9,12 +9,11 @@ Boop lets two Android devices share files by simply tapping them together. An NF
 ## Table of Contents
 
 1. [Architecture Overview](#architecture-overview)
-2. [Tech Stack](#tech-stack)
-3. [Project Structure](#project-structure)
-4. [Phase 1 — Completed](#phase-1--completed)
-5. [Phase 2 — Roadmap](#phase-2--roadmap)
-6. [Building the App](#building-the-app)
-7. [Permissions](#permissions)
+2. [Features](#features)
+3. [Tech Stack](#tech-stack)
+4. [Project Structure](#project-structure)
+5. [Building the App](#building-the-app)
+6. [Permissions](#permissions)
 
 ---
 
@@ -40,11 +39,11 @@ Sender Device                          Receiver Device
 
 ### Flow Summary
 
-1. **Sender** activates HCE via `BoopHceService`. The NDEF message carries the Sender's Wi-Fi Direct device address and a listening TCP port.
-2. **Receiver** reads the NDEF tag via foreground dispatch and extracts the connection parameters.
-3. Both devices negotiate a **Wi-Fi Direct** group. The Sender acts as Group Owner (GO).
-4. A **TCP socket** stream carries the raw file bytes from Sender → Receiver.
-5. The Receiver writes the incoming bytes to **MediaStore** (scoped storage).
+1. **Sender** picks a file (via file picker or Android share sheet) and activates HCE via `BoopHceService`. The NDEF message carries the Wi-Fi Direct group SSID, passphrase, MAC, and TCP port as JSON.
+2. **Receiver** reads the NFC payload via reader mode or foreground dispatch and extracts the connection parameters.
+3. **Receiver** joins the Sender's Wi-Fi Direct group using SSID + passphrase via `WifiP2pConfig.Builder` (API 29+). The Sender acts as Group Owner (GO).
+4. A **TCP socket** stream carries the raw file bytes from Sender → Receiver in 16 KB chunks with progress reporting.
+5. The Receiver writes the incoming bytes to **MediaStore** (scoped storage) in the Downloads folder.
 6. If the Receiver does not have Boop installed, the **Android Application Record (AAR)** in the NDEF message redirects them to the Play Store.
 
 ---
@@ -57,8 +56,8 @@ Sender Device                          Receiver Device
 | UI | Jetpack Compose + Material Design 3 |
 | Async | Kotlin Coroutines & Flows |
 | NFC (Sender) | Host-Based Card Emulation (HCE) — `HostApduService` |
-| NFC (Receiver) | NFC foreground dispatch / NDEF_DISCOVERED |
-| P2P Discovery | Wi-Fi Direct — `WifiP2pManager` |
+| NFC (Receiver) | NFC reader mode + foreground dispatch |
+| P2P Connection | Wi-Fi Direct — `WifiP2pManager` + `WifiP2pConfig.Builder` |
 | File Transfer | TCP/IP sockets (byte streams) |
 | Storage | Android MediaStore API (scoped storage) |
 | Min SDK | 26 (Android 8.0 Oreo) |
@@ -67,88 +66,48 @@ Sender Device                          Receiver Device
 
 ---
 
+## Features
+
+- **NFC-brokered connection** — Sender broadcasts Wi-Fi Direct credentials via HCE; Receiver reads via NFC reader mode or foreground dispatch
+- **Wi-Fi Direct file transfer** — high-speed P2P transfer over TCP sockets with 16 KB chunking and real-time progress
+- **Android share sheet integration** — share any file from any app (Contacts, Gallery, Files, etc.) directly to Boop via `ACTION_SEND`
+- **NFC antenna location guide** — Canvas visualization of the phone's NFC sweet spot using `getNfcAntennaInfo()` (API 34+) with fallback; auto-shows on first share, manually toggleable after
+- **Connection timeout & error handling** — 10s Wi-Fi Direct timeout with `CircularProgressIndicator`, green checkmark on connect, M3 `AlertDialog` for errors
+- **Transfer progress** — `LinearProgressIndicator` with bytes transferred display
+- **Scoped storage** — all file I/O through MediaStore API; received files saved to Downloads
+
 ## Project Structure
 
 ```
 app/src/main/
-├── AndroidManifest.xml              # Permissions, HCE service declaration
+├── AndroidManifest.xml
 ├── kotlin/com/shashsam/boop/
-│   ├── MainActivity.kt              # Entry point; hosts Compose content tree
+│   ├── MainActivity.kt              # Entry point, NFC dispatch, share intent handler
 │   ├── nfc/
-│   │   └── BoopHceService.kt        # HCE stub (Phase 2: NDEF payload)
+│   │   ├── BoopHceService.kt        # HCE service — NDEF payload with SSID/token/MAC/port
+│   │   └── NfcReader.kt             # NFC reader mode + foreground dispatch → ConnectionDetails
+│   ├── transfer/
+│   │   └── TransferManager.kt       # TCP send/receive with channelFlow progress emission
+│   ├── wifi/
+│   │   └── WifiDirectManager.kt     # Wi-Fi Direct state machine, SSID+passphrase connect
 │   ├── ui/
+│   │   ├── components/
+│   │   │   └── NfcAntennaGuide.kt   # Canvas NFC antenna visualization with pulsing ripple
 │   │   ├── screens/
-│   │   │   └── HomeScreen.kt        # Primary Compose UI screen
+│   │   │   └── HomeScreen.kt        # Full home UI — status, FABs, progress, log, dialogs
+│   │   ├── viewmodels/
+│   │   │   └── TransferViewModel.kt # Central orchestrator — NFC → Wi-Fi Direct → TCP
 │   │   └── theme/
-│   │       ├── Color.kt             # M3 color palette (Purple/Teal/Rose)
+│   │       ├── Color.kt             # M3 color palette (Purple/Teal/Rose + SuccessGreen)
 │   │       ├── Theme.kt             # BoopTheme (dynamic color on API 31+)
 │   │       └── Type.kt              # Bold typography scale
 │   └── utils/
-│       └── PermissionUtils.kt       # Runtime permission helpers
+│       ├── FilePicker.kt            # Compose file picker + metadata resolver
+│       └── PermissionUtils.kt       # Version-aware runtime permission helpers
 └── res/
     └── xml/
         └── apduservice.xml          # HCE AID filter (F0426F6F7001)
 ```
-
----
-
-## Phase 1 — Completed
-
-Phase 1 establishes the project foundation:
-
-### Infrastructure
-- Gradle 8.6 wrapper, AGP 8.3.2, Kotlin 2.0, Compose BOM 2024.06.00
-- Version catalog (`gradle/libs.versions.toml`)
-- `minSdk=26`, `compileSdk=34`
-
-### AndroidManifest Permissions
-Version-aware permission set:
-- NFC (`android.permission.NFC`)
-- Wi-Fi Direct (`ACCESS_WIFI_STATE`, `CHANGE_WIFI_STATE`, `CHANGE_NETWORK_STATE`)
-- Location for Wi-Fi Direct discovery:
-  - API ≤ 32: `ACCESS_FINE_LOCATION` + `ACCESS_COARSE_LOCATION`
-  - API 33+: `NEARBY_WIFI_DEVICES` (with `neverForLocation` flag)
-- Storage:
-  - API ≤ 28: `READ_EXTERNAL_STORAGE` + `WRITE_EXTERNAL_STORAGE`
-  - API 29–32: `READ_EXTERNAL_STORAGE` only
-  - API 33+: `READ_MEDIA_IMAGES`, `READ_MEDIA_VIDEO`, `READ_MEDIA_AUDIO`
-
-### NFC HCE Stub
-`BoopHceService` extends `HostApduService` with proprietary AID `F0426F6F7001`. Currently returns `SELECT_OK_SW (0x9000)` — full NDEF payload wired in Phase 2.
-
-### Material Design 3 Theme (`BoopTheme`)
-- Dynamic color on Android 12+ (API 31); static Purple/Teal/Rose palette on older devices
-- Bold typography throughout (ExtraBold display, Bold headlines)
-- Transparent status bar via `WindowCompat`
-
-### Home Screen UI (`HomeScreen.kt`)
-- **System Status Banner**: animated `Card` showing "Systems Ready: Permissions Granted" (green) or "Awaiting Permissions…" (amber)
-- **Action Buttons**: two `ExtendedFloatingActionButton`s — "Send File" and "Receive File" — 64 dp tall, colors shift with permission state
-- **Activity Log**: scrollable `LazyColumn` inside a `Card`; auto-scrolls to the latest entry
-
-### Runtime Permissions (`PermissionUtils.kt`)
-```kotlin
-fun requiredPermissions(): Array<String>          // version-aware permission list
-fun allPermissionsGranted(context: Context): Boolean
-@Composable fun rememberPermissionLauncher(...)    // Compose-friendly launcher wrapper
-```
-`MainActivity` calls `rememberPermissionLauncher` and fires `LaunchedEffect(Unit)` to request permissions on first launch.
-
----
-
-## Phase 2 — Roadmap
-
-| # | Feature | Key Class / File |
-|---|---|---|
-| 2a | NFC NDEF payload construction in HCE | `BoopHceService.kt` |
-| 2b | NFC foreground dispatch & NDEF parsing on Receiver | `MainActivity.kt` + new `NfcManager` |
-| 2c | Wi-Fi Direct P2P group negotiation | New `WifiDirectManager.kt` |
-| 2d | TCP socket file transfer (Sender server / Receiver client) | New `TransferManager.kt` |
-| 2e | MediaStore file picker (Sender) | New `FilePicker.kt` |
-| 2f | MediaStore write (Receiver) | Inside `TransferManager.kt` |
-| 2g | Progress UI & transfer state | Extend `HomeScreen.kt` + `TransferViewModel` |
-
-All async networking must use **Kotlin Coroutines and Flows**. No callbacks.
 
 ---
 
