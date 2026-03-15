@@ -6,9 +6,12 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.net.wifi.p2p.WifiP2pConfig
 import android.net.wifi.p2p.WifiP2pDevice
+import android.net.wifi.p2p.WifiP2pGroup
 import android.net.wifi.p2p.WifiP2pInfo
 import android.net.wifi.p2p.WifiP2pManager
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -239,18 +242,35 @@ class WifiDirectManager(private val context: Context) {
             _state.value = WifiDirectState.Error("Channel not initialised — call initialize() first")
         }
 
-        Log.d(TAG, "createGroup()")
+        Log.d(TAG, "createGroup() — removing any stale group first")
         _state.value = WifiDirectState.CreatingGroup
+
+        // Remove any stale group from a prior session/crash to avoid BUSY errors.
+        suspendCancellableCoroutine { cont ->
+            mgr.removeGroup(ch, object : WifiP2pManager.ActionListener {
+                override fun onSuccess() {
+                    Log.d(TAG, "Pre-createGroup removeGroup succeeded (stale group cleared)")
+                    if (cont.isActive) cont.resume(Unit)
+                }
+                override fun onFailure(reason: Int) {
+                    Log.d(TAG, "Pre-createGroup removeGroup failed: ${reason.toReasonString()} (no stale group — OK)")
+                    if (cont.isActive) cont.resume(Unit)
+                }
+            })
+        }
 
         return suspendCancellableCoroutine { cont ->
             mgr.createGroup(ch, object : WifiP2pManager.ActionListener {
                 override fun onSuccess() {
                     Log.d(TAG, "createGroup onSuccess — requesting group info")
-                    val mac = _ownDeviceMac.value
-                    if (mac == null) {
-                        Log.w(TAG, "Own MAC not yet received from WIFI_P2P_THIS_DEVICE_CHANGED — using placeholder")
-                    }
-                    mgr.requestGroupInfo(ch) { group ->
+                    queryGroupInfoWithRetry(mgr, ch, retriesLeft = 5) { group ->
+                        val ownerMac = group?.owner?.deviceAddress
+                        val mac = ownerMac ?: _ownDeviceMac.value
+                        if (mac == null) {
+                            Log.w(TAG, "Own MAC not available from group.owner or THIS_DEVICE_CHANGED — using placeholder")
+                        } else {
+                            Log.d(TAG, "Resolved own MAC: $mac (source=${if (ownerMac != null) "group.owner" else "THIS_DEVICE_CHANGED"})")
+                        }
                         Log.d(TAG, "Group info: name=${group?.networkName} passphrase=${if (group?.passphrase != null) "***" else "null"}")
                         _state.value = WifiDirectState.GroupCreated(
                             deviceMac = mac ?: "00:00:00:00:00:00",
@@ -307,7 +327,16 @@ class WifiDirectManager(private val context: Context) {
      * @param deviceAddress Wi-Fi Direct MAC address of the Sender device (from NFC payload).
      * @return `true` if the request was accepted; `false` otherwise.
      */
-    suspend fun connect(deviceAddress: String): Boolean {
+    /**
+     * Joins an existing Wi-Fi Direct group by SSID and passphrase (API 29+).
+     * Falls back to legacy MAC-based connect on API 26–28.
+     *
+     * @param ssid       Wi-Fi Direct group network name (e.g. "DIRECT-xx-DeviceName").
+     * @param passphrase WPA2 passphrase for the group.
+     * @param deviceMac  Sender's Wi-Fi Direct MAC (used only as fallback on API < 29).
+     * @return `true` if the request was accepted; `false` otherwise.
+     */
+    suspend fun connect(ssid: String, passphrase: String, deviceMac: String): Boolean {
         val mgr = manager ?: return false.also {
             _state.value = WifiDirectState.Error("Wi-Fi Direct not available")
         }
@@ -315,10 +344,20 @@ class WifiDirectManager(private val context: Context) {
             _state.value = WifiDirectState.Error("Channel not initialised — call initialize() first")
         }
 
-        Log.d(TAG, "connect(deviceAddress=$deviceAddress)")
+        Log.d(TAG, "connect(ssid=$ssid, mac=$deviceMac)")
         _state.value = WifiDirectState.Connecting
 
-        val config = WifiP2pConfig().apply { this.deviceAddress = deviceAddress }
+        val config = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            Log.d(TAG, "Using WifiP2pConfig.Builder with SSID+passphrase (API 29+)")
+            WifiP2pConfig.Builder()
+                .setNetworkName(ssid)
+                .setPassphrase(passphrase)
+                .build()
+        } else {
+            Log.d(TAG, "Using legacy WifiP2pConfig with MAC (API <29)")
+            WifiP2pConfig().apply { this.deviceAddress = deviceMac }
+        }
+
         return suspendCancellableCoroutine { cont ->
             mgr.connect(ch, config, object : WifiP2pManager.ActionListener {
                 override fun onSuccess() {
@@ -385,6 +424,32 @@ class WifiDirectManager(private val context: Context) {
     }
 
     // ─── Private helpers ──────────────────────────────────────────────────────
+
+    /**
+     * Queries group info, retrying up to [retriesLeft] times with 300ms delay if the
+     * group data is not yet provisioned (null networkName). This handles the race
+     * between createGroup onSuccess and the framework fully provisioning the group.
+     */
+    private fun queryGroupInfoWithRetry(
+        mgr: WifiP2pManager,
+        ch: WifiP2pManager.Channel,
+        retriesLeft: Int,
+        onResult: (WifiP2pGroup?) -> Unit
+    ) {
+        mgr.requestGroupInfo(ch) { group ->
+            if (group?.networkName != null) {
+                onResult(group)
+            } else if (retriesLeft > 0) {
+                Log.d(TAG, "Group info not yet available, retrying in 300ms ($retriesLeft attempts left)")
+                Handler(Looper.getMainLooper()).postDelayed({
+                    queryGroupInfoWithRetry(mgr, ch, retriesLeft - 1, onResult)
+                }, 300L)
+            } else {
+                Log.w(TAG, "Group info unavailable after retries — using fallback")
+                onResult(group)
+            }
+        }
+    }
 
     private fun Int.toReasonString(): String = when (this) {
         WifiP2pManager.P2P_UNSUPPORTED -> "P2P_UNSUPPORTED"

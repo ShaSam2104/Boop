@@ -229,6 +229,17 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
      * @param details Parsed [ConnectionDetails] from the NFC tap.
      */
     fun onNfcPayloadReceived(details: ConnectionDetails) {
+        val current = _uiState.value
+        // Only process NFC payloads when in Receive mode — Sender should never act on incoming NFC.
+        if (current.isSendMode) {
+            Log.d(TAG, "onNfcPayloadReceived ignored — device is in Send mode")
+            return
+        }
+        // Guard against duplicate callbacks (reader mode + foreground dispatch fire for the same tap)
+        if (current.isWifiConnecting || current.isWifiConnected || current.isTransferring) {
+            Log.d(TAG, "onNfcPayloadReceived ignored — already in progress (connecting=${current.isWifiConnecting} connected=${current.isWifiConnected} transferring=${current.isTransferring})")
+            return
+        }
         Log.d(TAG, "onNfcPayloadReceived: mac=${details.mac} port=${details.port} ssid=${details.ssid} token=${details.token}")
         appendLog("📲 NFC tap! Sender MAC=${details.mac} Port=${details.port}")
         _uiState.update { it.copy(isNfcReading = false, receivedPayload = details) }
@@ -236,8 +247,8 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
         val context = getApplication<Application>()
         transferJob?.cancel()
         transferJob = viewModelScope.launch {
-            // 1. Queue Wi-Fi Direct connection request to the Sender
-            val queued = wifiDirectManager.connect(details.mac)
+            // 1. Join the Sender's Wi-Fi Direct group by SSID + passphrase
+            val queued = wifiDirectManager.connect(details.ssid, details.token, details.mac)
             if (!queued) {
                 appendLog("❌ Wi-Fi Direct connection request rejected.", isError = true)
                 _uiState.update { it.copy(error = "Wi-Fi Direct connection request was rejected.") }

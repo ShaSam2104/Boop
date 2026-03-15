@@ -9,7 +9,7 @@ import android.provider.MediaStore
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.withContext
 import java.io.DataInputStream
 import java.io.DataOutputStream
@@ -95,7 +95,7 @@ object TransferManager {
      * @param fileUri URI of the file to send (from the file picker).
      * @param port    TCP port to listen on.
      */
-    fun sendFile(context: Context, fileUri: Uri, port: Int): Flow<TransferProgress> = flow {
+    fun sendFile(context: Context, fileUri: Uri, port: Int): Flow<TransferProgress> = channelFlow {
         Log.d(TAG, "sendFile: uri=$fileUri port=$port")
         withContext(Dispatchers.IO) {
             var serverSocket: ServerSocket? = null
@@ -103,7 +103,7 @@ object TransferManager {
             try {
                 serverSocket = ServerSocket(port).apply { soTimeout = SERVER_ACCEPT_TIMEOUT_MS }
                 Log.d(TAG, "Listening on port $port (timeout=${SERVER_ACCEPT_TIMEOUT_MS}ms)")
-                emit(TransferProgress())
+                send(TransferProgress())
 
                 clientSocket = serverSocket.accept()
                 Log.d(TAG, "Client connected: ${clientSocket.inetAddress.hostAddress}")
@@ -121,16 +121,16 @@ object TransferManager {
                         destination = clientSocket.getOutputStream(),
                         totalSize = header.size
                     ) { transferred ->
-                        emit(TransferProgress(transferred, header.size))
+                        send(TransferProgress(transferred, header.size))
                     }
                     dataOut.flush()
                     Log.d(TAG, "File sent: ${header.size} bytes")
-                    emit(TransferProgress(header.size, header.size, isComplete = true))
+                    send(TransferProgress(header.size, header.size, isComplete = true))
                 } ?: throw IllegalStateException("Cannot open InputStream for: $fileUri")
 
             } catch (e: Exception) {
                 Log.e(TAG, "sendFile error", e)
-                emit(TransferProgress(error = e.message ?: "Send failed"))
+                send(TransferProgress(error = e.message ?: "Send failed"))
             } finally {
                 runCatching { clientSocket?.close() }
                 runCatching { serverSocket?.close() }
@@ -152,14 +152,14 @@ object TransferManager {
         context: Context,
         groupOwnerAddress: String,
         port: Int
-    ): Flow<TransferProgress> = flow {
+    ): Flow<TransferProgress> = channelFlow {
         Log.d(TAG, "receiveFile: host=$groupOwnerAddress port=$port")
         withContext(Dispatchers.IO) {
             var socket: Socket? = null
             try {
                 socket = Socket(groupOwnerAddress, port)
                 Log.d(TAG, "Connected to $groupOwnerAddress:$port")
-                emit(TransferProgress())
+                send(TransferProgress())
 
                 val dataIn = DataInputStream(socket.getInputStream().buffered())
                 val header = readHeader(dataIn)
@@ -174,7 +174,7 @@ object TransferManager {
                         destination = outputStream,
                         totalSize = header.size
                     ) { transferred ->
-                        emit(TransferProgress(transferred, header.size))
+                        send(TransferProgress(transferred, header.size))
                     }
 
                     // Remove IS_PENDING flag to publish the file (API 29+)
@@ -186,12 +186,12 @@ object TransferManager {
                         )
                     }
                     Log.d(TAG, "File received: ${header.size} bytes → $outputUri")
-                    emit(TransferProgress(header.size, header.size, isComplete = true, savedUri = outputUri))
+                    send(TransferProgress(header.size, header.size, isComplete = true, savedUri = outputUri))
                 } ?: throw IllegalStateException("Cannot open OutputStream for: $outputUri")
 
             } catch (e: Exception) {
                 Log.e(TAG, "receiveFile error", e)
-                emit(TransferProgress(error = e.message ?: "Receive failed"))
+                send(TransferProgress(error = e.message ?: "Receive failed"))
             } finally {
                 runCatching { socket?.close() }
                 Log.d(TAG, "receiveFile cleanup done")
