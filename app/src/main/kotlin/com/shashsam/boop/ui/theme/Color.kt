@@ -2,33 +2,52 @@ package com.shashsam.boop.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// Primary brand palette — deep violet / indigo
-val Purple10 = Color(0xFF21005D)
-val Purple20 = Color(0xFF381E72)
-val Purple30 = Color(0xFF4F378B)
-val Purple40 = Color(0xFF6650A4)
-val Purple80 = Color(0xFFD0BCFF)
-val Purple90 = Color(0xFFEADDFF)
+// ─── Brand ──────────────────────────────────────────────────────────────────
+val BoopBrandPurple = Color(0xFF736DEE)
+val BoopBrandPurpleLight = Color(0xFF9B97F5)
+val BoopBrandPurpleDark = Color(0xFF4B45B8)
+val BoopAccentYellow = Color(0xFFF8FFA3)
+val BoopAccentYellowDark = Color(0xFFD4DA4E)
 
-// Secondary — teal accent
-val Teal10 = Color(0xFF003731)
-val Teal20 = Color(0xFF004D45)
-val Teal40 = Color(0xFF006A60)
-val Teal80 = Color(0xFF70EFDE)
-val Teal90 = Color(0xFFA7F3EB)
+// ─── Dark theme surfaces ────────────────────────────────────────────────────
+val BoopBlack = Color(0xFF000000)
+val BoopDarkSurface = Color(0xFF111111)
+val BoopDarkSurfaceVariant = Color(0xFF1A1A1A)
+val BoopDarkCard = Color(0xFF1E1E1E)
+val BoopDarkElevated = Color(0xFF222222)
 
-// Tertiary — rose pink for highlight
-val Rose40 = Color(0xFF7D5260)
-val Rose80 = Color(0xFFEFB8C8)
-val Rose90 = Color(0xFFFFD8E4)
+// ─── Light theme surfaces ───────────────────────────────────────────────────
+val BoopLightBackground = Color(0xFFF6F6F8)
+val BoopLightSurface = Color(0xFFFFFFFF)
+val BoopLightSurfaceVariant = Color(0xFFECECF0)
+val BoopLightCard = Color(0xFFF0F0F4)
+val BoopLightElevated = Color(0xFFE8E8EC)
 
-// Neutral surface tones
-val Neutral10 = Color(0xFF1C1B1F)
-val Neutral20 = Color(0xFF313033)
-val Neutral90 = Color(0xFFE6E1E5)
-val Neutral95 = Color(0xFFF4EFF4)
-val Neutral99 = Color(0xFFFFFBFE)
+// ─── Purple-dominant light theme surfaces ───────────────────────────────
+val BoopPurpleSurface = Color(0xFF6862E0)
+val BoopPurpleSurfaceVariant = Color(0xFF5D57D0)
 
-// Status colors
+// ─── Text ───────────────────────────────────────────────────────────────────
+val BoopOnDark = Color(0xFFFFFFFF)
+val BoopOnDarkSecondary = Color(0xFFB0B0B0)
+val BoopOnDarkTertiary = Color(0xFF777777)
+val BoopOnLight = Color(0xFF111111)
+val BoopOnLightSecondary = Color(0xFF6B6B6B)
+val BoopOnLightTertiary = Color(0xFF999999)
+val BoopOnPurpleSecondary = Color(0xCCFFFFFF)  // white 80%
+val BoopOnPurpleTertiary = Color(0x80FFFFFF)   // white 50%
+
+// ─── Status ─────────────────────────────────────────────────────────────────
 val SuccessGreen = Color(0xFF4CAF50)
 val ErrorRed = Color(0xFFCF6679)
+val WarningAmber = Color(0xFFFFB74D)
+
+// ─── Glass / overlay ────────────────────────────────────────────────────────
+val GlassWhiteBg = Color(0x14FFFFFF)      // ~8% white
+val GlassWhiteBorder = Color(0x33FFFFFF)  // 20% white
+val GlassDarkBg = Color(0x14000000)       // ~8% black
+val GlassDarkBorder = Color(0x33000000)   // 20% black
+
+// ─── Glow ───────────────────────────────────────────────────────────────────
+val BoopGlowYellow = Color(0x26F8FFA3)    // 15% accent yellow
+val BoopGlowPurple = Color(0x26736DEE)    // 15% brand purple

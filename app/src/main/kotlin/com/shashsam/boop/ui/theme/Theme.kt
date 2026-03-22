@@ -1,101 +1,197 @@
 package com.shashsam.boop.ui.theme
 
 import android.app.Activity
-import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.dynamicDarkColorScheme
-import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 
-// --- Static fallback color schemes (Android 11 and below) ---
+// ─── Extended design tokens ──────────────────────────────────────────────────
 
-private val BoopDarkColorScheme = darkColorScheme(
-    primary = Purple80,
-    onPrimary = Purple20,
-    primaryContainer = Purple30,
-    onPrimaryContainer = Purple90,
-    secondary = Teal80,
-    onSecondary = Teal20,
-    secondaryContainer = Teal40,
-    onSecondaryContainer = Teal90,
-    tertiary = Rose80,
-    onTertiary = Rose40,
-    tertiaryContainer = Rose40,
-    onTertiaryContainer = Rose90,
-    background = Neutral10,
-    onBackground = Neutral90,
-    surface = Neutral10,
-    onSurface = Neutral90,
-    surfaceVariant = Neutral20,
-    onSurfaceVariant = Neutral90,
-    error = ErrorRed
+/**
+ * Non-M3 design tokens for the Boop "Solid Geometric" design system.
+ * Accessible via [LocalBoopTokens] from any composable.
+ *
+ * Each token maps to a concrete color so screens never need to branch on
+ * dark/light — the tokens carry the correct value for the active theme.
+ */
+data class BoopExtendedTokens(
+    val accent: Color,
+    val glowColor: Color,
+    val glassBg: Color,
+    val glassBorder: Color,
+    val cardBackground: Color,
+    val elevatedBackground: Color,
+    val textSecondary: Color,
+    val textTertiary: Color,
+    // Pill mode-selector
+    val pillContainer: Color,
+    val pillActive: Color,
+    // Concentric-circle CTA
+    val concentricDashed: Color,
+    val concentricOuter: Color,
+    val concentricInner: Color,
+    // Bottom navigation
+    val navBarContainer: Color,
+    val navIndicator: Color,
 )
 
-private val BoopLightColorScheme = lightColorScheme(
-    primary = Purple40,
-    onPrimary = Neutral99,
-    primaryContainer = Purple90,
-    onPrimaryContainer = Purple10,
-    secondary = Teal40,
-    onSecondary = Neutral99,
-    secondaryContainer = Teal90,
-    onSecondaryContainer = Teal10,
-    tertiary = Rose40,
-    onTertiary = Neutral99,
-    tertiaryContainer = Rose90,
-    onTertiaryContainer = Rose40,
-    background = Neutral99,
-    onBackground = Neutral10,
-    surface = Neutral99,
-    onSurface = Neutral10,
-    surfaceVariant = Neutral95,
-    onSurfaceVariant = Neutral20,
-    error = ErrorRed
+val LocalBoopTokens = staticCompositionLocalOf {
+    BoopExtendedTokens(
+        accent = BoopAccentYellow,
+        glowColor = BoopGlowYellow,
+        glassBg = GlassWhiteBg,
+        glassBorder = GlassWhiteBorder,
+        cardBackground = BoopDarkCard,
+        elevatedBackground = BoopDarkElevated,
+        textSecondary = BoopOnDarkSecondary,
+        textTertiary = BoopOnDarkTertiary,
+        pillContainer = Color(0xFF1A1A1A),
+        pillActive = Color(0xFF2A2A2A),
+        concentricDashed = Color(0xFF333333),
+        concentricOuter = Color(0xFF222222),
+        concentricInner = Color(0xFF1A1A1A),
+        navBarContainer = BoopBlack,
+        navIndicator = Color(0xFF2A2A2A),
+    )
+}
+
+// ─── Color schemes ───────────────────────────────────────────────────────────
+
+private val BoopDarkColorScheme = darkColorScheme(
+    primary = BoopBrandPurple,
+    onPrimary = BoopOnDark,
+    primaryContainer = BoopBrandPurpleDark,
+    onPrimaryContainer = BoopOnDark,
+    secondary = BoopBrandPurpleLight,
+    onSecondary = BoopBlack,
+    secondaryContainer = BoopDarkSurfaceVariant,
+    onSecondaryContainer = BoopOnDark,
+    tertiary = BoopAccentYellow,
+    onTertiary = BoopBlack,
+    tertiaryContainer = BoopAccentYellowDark,
+    onTertiaryContainer = BoopBlack,
+    background = BoopBlack,
+    onBackground = BoopOnDark,
+    surface = BoopDarkSurface,
+    onSurface = BoopOnDark,
+    surfaceVariant = BoopDarkSurfaceVariant,
+    onSurfaceVariant = BoopOnDarkSecondary,
+    outline = BoopOnDarkTertiary,
+    outlineVariant = Color(0xFF333333),
+    error = ErrorRed,
+    onError = BoopOnDark,
+    errorContainer = Color(0xFF3B1F1F),
+    onErrorContainer = ErrorRed
 )
 
 /**
- * Boop Material 3 theme.
+ * Purple-dominant light scheme — purple background, yellow + white accents.
+ */
+private val BoopLightColorScheme = lightColorScheme(
+    primary = Color.White,
+    onPrimary = BoopBrandPurpleDark,
+    primaryContainer = Color(0xFFEEEEFF),
+    onPrimaryContainer = BoopBrandPurpleDark,
+    secondary = BoopAccentYellow,
+    onSecondary = Color(0xFF1A1A00),
+    secondaryContainer = Color(0x33F8FFA3),
+    onSecondaryContainer = Color(0xFF1A1A00),
+    tertiary = BoopAccentYellow,
+    onTertiary = Color(0xFF1A1A00),
+    tertiaryContainer = BoopAccentYellowDark,
+    onTertiaryContainer = Color(0xFF1A1A00),
+    background = BoopBrandPurple,
+    onBackground = Color.White,
+    surface = BoopPurpleSurface,
+    onSurface = Color.White,
+    surfaceVariant = BoopPurpleSurfaceVariant,
+    onSurfaceVariant = Color(0xFFD0CDFF),
+    outline = Color(0xFFADA9E0),
+    outlineVariant = Color(0xFF4D47B8),
+    error = ErrorRed,
+    onError = Color.White,
+    errorContainer = Color(0xFF4D2030),
+    onErrorContainer = ErrorRed
+)
+
+private val DarkExtendedTokens = BoopExtendedTokens(
+    accent = BoopAccentYellow,
+    glowColor = BoopGlowYellow,
+    glassBg = GlassWhiteBg,
+    glassBorder = GlassWhiteBorder,
+    cardBackground = BoopDarkCard,
+    elevatedBackground = BoopDarkElevated,
+    textSecondary = BoopOnDarkSecondary,
+    textTertiary = BoopOnDarkTertiary,
+    pillContainer = Color(0xFF1A1A1A),
+    pillActive = Color(0xFF2A2A2A),
+    concentricDashed = Color(0xFF333333),
+    concentricOuter = Color(0xFF222222),
+    concentricInner = Color(0xFF1A1A1A),
+    navBarContainer = BoopBlack,
+    navIndicator = Color(0xFF2A2A2A),
+)
+
+private val LightExtendedTokens = BoopExtendedTokens(
+    accent = BoopAccentYellow,
+    glowColor = BoopGlowYellow,
+    glassBg = Color(0x1AFFFFFF),
+    glassBorder = Color(0x33FFFFFF),
+    cardBackground = Color(0x1AFFFFFF),
+    elevatedBackground = Color(0x26FFFFFF),
+    textSecondary = BoopOnPurpleSecondary,
+    textTertiary = BoopOnPurpleTertiary,
+    pillContainer = Color(0xFF5D57D0),
+    pillActive = Color(0xFF8A85F5),
+    concentricDashed = Color(0xFF9590F0),
+    concentricOuter = Color(0xFF6560D8),
+    concentricInner = Color(0xFF5D57D0),
+    navBarContainer = BoopPurpleSurfaceVariant,
+    navIndicator = Color(0xFF5550C0),
+)
+
+// ─── Theme composable ────────────────────────────────────────────────────────
+
+/**
+ * Boop Material 3 theme with "Solid Geometric" design system.
  *
- * Dynamic color is enabled on Android 12+ (API 31) devices, where the system
- * generates a color scheme from the user's wallpaper. On older devices the
- * static [BoopLightColorScheme] / [BoopDarkColorScheme] are used instead.
+ * Brand colors (purple primary, yellow accent) are always used —
+ * dynamic color is not supported to maintain the design identity.
  */
 @Composable
 fun BoopTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
-    dynamicColor: Boolean = true,
     content: @Composable () -> Unit
 ) {
-    val colorScheme = when {
-        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
-            val context = LocalContext.current
-            if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-        }
-        darkTheme -> BoopDarkColorScheme
-        else -> BoopLightColorScheme
-    }
+    val colorScheme = if (darkTheme) BoopDarkColorScheme else BoopLightColorScheme
+    val extendedTokens = if (darkTheme) DarkExtendedTokens else LightExtendedTokens
 
-    // Set the system status bar to match the theme background color.
     val view = LocalView.current
     if (!view.isInEditMode) {
         SideEffect {
             val window = (view.context as Activity).window
             window.statusBarColor = colorScheme.background.toArgb()
-            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !darkTheme
+            // Both themes have dark backgrounds — light status bar icons when bg is dark
+            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars =
+                colorScheme.background.luminance() > 0.5f
         }
     }
 
-    MaterialTheme(
-        colorScheme = colorScheme,
-        typography = BoopTypography,
-        content = content
-    )
+    CompositionLocalProvider(LocalBoopTokens provides extendedTokens) {
+        MaterialTheme(
+            colorScheme = colorScheme,
+            typography = BoopTypography,
+            content = content
+        )
+    }
 }
