@@ -18,8 +18,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import com.shashsam.boop.nfc.NfcReader
 import com.shashsam.boop.nfc.NfcReaderState
-import com.shashsam.boop.ui.screens.HomeScreen
+import com.shashsam.boop.ui.navigation.BoopScaffold
 import com.shashsam.boop.ui.theme.BoopTheme
+import com.shashsam.boop.ui.viewmodels.SettingsViewModel
 import com.shashsam.boop.ui.viewmodels.TransferViewModel
 import com.shashsam.boop.utils.rememberFilePicker
 import com.shashsam.boop.utils.rememberPermissionLauncher
@@ -31,6 +32,7 @@ private const val TAG = "MainActivity"
 class MainActivity : ComponentActivity() {
 
     private val viewModel: TransferViewModel by viewModels()
+    private val settingsViewModel: SettingsViewModel by viewModels()
 
     /** Wraps the NFC adapter for reader mode and foreground dispatch. */
     private lateinit var nfcReader: NfcReader
@@ -54,7 +56,9 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
 
         setContent {
-            BoopTheme {
+            val settingsState by settingsViewModel.uiState.collectAsState()
+
+            BoopTheme(darkTheme = settingsState.darkModeEnabled) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
@@ -102,7 +106,6 @@ class MainActivity : ComponentActivity() {
                             when (readerState) {
                                 is NfcReaderState.Connected -> {
                                     Log.d(TAG, "NFC reader mode payload: ${readerState.details}")
-                                    // Reset first to prevent double-processing on rapid taps
                                     nfcReader.reset()
                                     nfcReader.disableReaderMode(this@MainActivity)
                                     viewModel.onNfcPayloadReceived(readerState.details)
@@ -116,9 +119,10 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
-                    HomeScreen(
-                        permissionsGranted = permissionsGranted,
+                    BoopScaffold(
                         transferUiState = uiState,
+                        settingsState = settingsState,
+                        permissionsGranted = permissionsGranted,
                         onSendClick = {
                             Log.d(TAG, "onSendClick")
                             if (!permissionsGranted) {
@@ -149,12 +153,25 @@ class MainActivity : ComponentActivity() {
                             Log.d(TAG, "onResetClick")
                             viewModel.reset()
                         },
+                        onResendBoop = { boop ->
+                            Log.d(TAG, "onResendBoop: ${boop.fileName} uri=${boop.fileUri}")
+                            boop.fileUri?.let { uri ->
+                                viewModel.prepareSend()
+                                viewModel.startSending(uri)
+                            }
+                        },
                         onDismissPayload = {
                             viewModel.dismissPayloadSheet()
                         },
                         onDismissError = {
                             viewModel.dismissError()
-                        }
+                        },
+                        onNotificationsToggle = settingsViewModel::setNotificationsEnabled,
+                        onLocationToggle = settingsViewModel::setLocationEnabled,
+                        onVibrationToggle = settingsViewModel::setVibrationEnabled,
+                        onSoundToggle = settingsViewModel::setSoundEnabled,
+                        onDisplayNameChange = settingsViewModel::setDisplayName,
+                        onDarkModeToggle = settingsViewModel::setDarkMode
                     )
                 }
             }
@@ -165,8 +182,6 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         Log.d(TAG, "onResume")
         viewModel.wifiDirectManager.register()
-
-        // Enable NFC foreground dispatch for NDEF-discovered intents
         nfcReader.enableForegroundDispatch(this)
     }
 

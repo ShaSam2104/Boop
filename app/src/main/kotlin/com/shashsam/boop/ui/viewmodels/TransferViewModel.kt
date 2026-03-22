@@ -2,13 +2,15 @@ package com.shashsam.boop.ui.viewmodels
 
 import android.app.Application
 import android.net.Uri
+import android.provider.OpenableColumns
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.shashsam.boop.nfc.BoopHceService
 import com.shashsam.boop.nfc.ConnectionDetails
 import com.shashsam.boop.transfer.TransferManager
-import com.shashsam.boop.ui.screens.LogEntry
+import com.shashsam.boop.ui.models.LogEntry
+import com.shashsam.boop.ui.models.RecentBoop
 import com.shashsam.boop.utils.toFormattedSize
 import com.shashsam.boop.wifi.GROUP_OWNER_IP
 import com.shashsam.boop.wifi.WifiDirectManager
@@ -62,7 +64,9 @@ data class TransferUiState(
     val totalBytes: Long = 0L,
     val savedFileUri: Uri? = null,
     val error: String? = null,
-    val receivedPayload: ConnectionDetails? = null
+    val receivedPayload: ConnectionDetails? = null,
+    val recentTransfers: List<RecentBoop> = emptyList(),
+    val currentFileName: String? = null
 )
 
 /**
@@ -185,11 +189,18 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
     fun startSending(fileUri: Uri) {
         Log.d(TAG, "startSending: $fileUri")
         val context = getApplication<Application>()
+        // Extract file name from URI for display in Recent Boops
+        val fileName = resolveFileName(fileUri)
         transferJob?.cancel()
         transferJob = viewModelScope.launch {
             appendLog("🚀 Starting file transfer…")
             _uiState.update {
-                it.copy(isTransferring = true, transferProgress = 0f, transferComplete = false)
+                it.copy(
+                    isTransferring = true,
+                    transferProgress = 0f,
+                    transferComplete = false,
+                    currentFileName = fileName
+                )
             }
             TransferManager.sendFile(context, fileUri, BoopHceService.DEFAULT_PORT)
                 .collect { progress -> handleTransferProgress(progress) }
@@ -313,12 +324,21 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
                     "✅ Transfer complete! $sizeStr" +
                             (progress.savedUri?.let { " → Saved to Downloads" } ?: "")
                 )
-                _uiState.update {
-                    it.copy(
+                _uiState.update { state ->
+                    val boop = RecentBoop(
+                        fileName = state.currentFileName ?: "Unknown file",
+                        fileSize = progress.totalBytes,
+                        mimeType = "",
+                        timestamp = System.currentTimeMillis(),
+                        wasSender = state.isSendMode,
+                        fileUri = progress.savedUri
+                    )
+                    state.copy(
                         isTransferring = false,
                         transferProgress = 1f,
                         transferComplete = true,
-                        savedFileUri = progress.savedUri
+                        savedFileUri = progress.savedUri,
+                        recentTransfers = state.recentTransfers + boop
                     )
                 }
             }
@@ -362,11 +382,27 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    /** Resolves a human-readable file name from a content URI. */
+    private fun resolveFileName(uri: Uri): String {
+        val context = getApplication<Application>()
+        return try {
+            context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
+                ?.use { cursor ->
+                    if (cursor.moveToFirst()) cursor.getString(0) else null
+                } ?: uri.lastPathSegment ?: "Unknown file"
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to resolve file name for $uri", e)
+            uri.lastPathSegment ?: "Unknown file"
+        }
+    }
+
     /** Resets the entire transfer state back to idle. */
     fun reset() {
         transferJob?.cancel()
         wifiDirectManager.reset()
-        _uiState.value = TransferUiState()
+        // Preserve recent transfers across resets
+        val recent = _uiState.value.recentTransfers
+        _uiState.value = TransferUiState(recentTransfers = recent)
         Log.d(TAG, "State reset to Idle")
     }
 
