@@ -347,12 +347,52 @@ class WifiDirectManager(private val context: Context) {
         Log.d(TAG, "connect(ssid=$ssid, mac=$deviceMac)")
         _state.value = WifiDirectState.Connecting
 
+        // Clean up any stale P2P state before connecting (mirrors createGroup cleanup).
+        // Without this, Samsung firmware may drop the connect request.
+        suspendCancellableCoroutine { cont ->
+            mgr.cancelConnect(ch, object : WifiP2pManager.ActionListener {
+                override fun onSuccess() {
+                    Log.d(TAG, "Pre-connect cancelConnect succeeded (stale request cleared)")
+                    if (cont.isActive) cont.resume(Unit)
+                }
+                override fun onFailure(reason: Int) {
+                    Log.d(TAG, "Pre-connect cancelConnect failed: ${reason.toReasonString()} (no pending — OK)")
+                    if (cont.isActive) cont.resume(Unit)
+                }
+            })
+        }
+        suspendCancellableCoroutine { cont ->
+            mgr.removeGroup(ch, object : WifiP2pManager.ActionListener {
+                override fun onSuccess() {
+                    Log.d(TAG, "Pre-connect removeGroup succeeded (stale group cleared)")
+                    if (cont.isActive) cont.resume(Unit)
+                }
+                override fun onFailure(reason: Int) {
+                    Log.d(TAG, "Pre-connect removeGroup failed: ${reason.toReasonString()} (no stale group — OK)")
+                    if (cont.isActive) cont.resume(Unit)
+                }
+            })
+        }
+
         val config = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             Log.d(TAG, "Using WifiP2pConfig.Builder with SSID+passphrase (API 29+)")
-            WifiP2pConfig.Builder()
+            val builder = WifiP2pConfig.Builder()
                 .setNetworkName(ssid)
                 .setPassphrase(passphrase)
-                .build()
+            builder.build().also { cfg ->
+                // Set joinExistingGroup=true via reflection. This hidden field
+                // tells WifiP2pService we're joining the Sender's group, not
+                // creating a new one. Without it, Samsung firmware drops the
+                // connect request with "Dropping connect request".
+                try {
+                    val field = WifiP2pConfig::class.java.getDeclaredField("joinExistingGroup")
+                    field.isAccessible = true
+                    field.setBoolean(cfg, true)
+                    Log.d(TAG, "Set joinExistingGroup=true via reflection")
+                } catch (e: Exception) {
+                    Log.w(TAG, "Could not set joinExistingGroup — field not found on this ROM", e)
+                }
+            }
         } else {
             Log.d(TAG, "Using legacy WifiP2pConfig with MAC (API <29)")
             WifiP2pConfig().apply { this.deviceAddress = deviceMac }
