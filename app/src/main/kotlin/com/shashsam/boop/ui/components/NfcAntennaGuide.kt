@@ -150,8 +150,9 @@ fun NfcAntennaGuide(
     modifier: Modifier = Modifier
 ) {
     val primary = MaterialTheme.colorScheme.primary
+    val accent = com.shashsam.boop.ui.theme.LocalBoopTokens.current.accent
     val outline = MaterialTheme.colorScheme.outline
-    val surfaceVariant = MaterialTheme.colorScheme.surfaceVariant
+    val surfaceVariant = com.shashsam.boop.ui.theme.LocalBoopTokens.current.cardBackground
     val onSurfaceVariant = MaterialTheme.colorScheme.onSurfaceVariant
 
     // Three ripple rings, staggered by ~667 ms to create a continuous pulse.
@@ -288,15 +289,15 @@ fun NfcAntennaGuide(
             drawRippleRing(primary, ripple2, ax, ay, maxRippleR)
             drawRippleRing(primary, ripple3, ax, ay, maxRippleR)
 
-            // Soft glow behind center dot
+            // Soft glow behind center dot (accent yellow)
             drawCircle(
-                color = primary.copy(alpha = 0.15f),
+                color = accent.copy(alpha = 0.25f),
                 radius = 12.dp.toPx(),
                 center = Offset(ax, ay)
             )
-            // Center dot
+            // Center dot (accent yellow)
             drawCircle(
-                color = primary,
+                color = accent,
                 radius = 5.dp.toPx(),
                 center = Offset(ax, ay)
             )
