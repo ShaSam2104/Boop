@@ -2,10 +2,48 @@
     <string name="app_name">Boop</string>
     <string name="hce_service_description">Boop P2P NFC Handshake Service</string>
     <string name="hce_aid_group_description">Boop P2P handshake AID group</string>
+
+    <!-- Home Screen -->
     <string name="send_file">Send File</string>
     <string name="receive_file">Receive File</string>
+    <string name="boop_it">Boop IT</string>
+    <string name="boop_instruction">Select Send or Receive to begin</string>
+    <string name="recent_boops">Recent Boops</string>
+    <string name="activity_log_title">Activity Log</string>
+    <string name="no_activity_yet">No activity yet. Tap Send or Receive to get started.</string>
     <string name="status_permissions_granted">Systems Ready: Permissions Granted</string>
     <string name="status_awaiting_permissions">Awaiting Permissions…</string>
-    <string name="activity_log_title">Activity Log</string>
-    <string name="no_activity_yet">No activity yet. Tap a button to get started.</string>
+
+    <!-- Transfer Progress -->
+    <string name="file_transfer">File Transfer</string>
+    <string name="transferring">Transferring…</string>
+    <string name="transfer_complete">Transfer Complete</string>
+    <string name="cancel_transfer">Cancel Transfer</string>
+
+    <!-- NFC Guide -->
+    <string name="nfc_guide">NFC Guide</string>
+    <string name="nfc_guide_title">Tap phones together here</string>
+    <string name="nfc_guide_subtitle">Align the top of your phone with the other device to Boop!</string>
+    <string name="got_it">Got it</string>
+    <string name="contactless">contactless</string>
+
+    <!-- Settings -->
+    <string name="settings">Settings</string>
+    <string name="notifications">Notifications</string>
+    <string name="location">Location</string>
+    <string name="vibration">Vibration</string>
+    <string name="sound">Sound</string>
+    <string name="identity">Identity</string>
+    <string name="edit_display_name">Edit Display Name</string>
+    <string name="permissions_warning">Some features require permissions to work properly.</string>
+
+    <!-- Bottom Nav -->
+    <string name="home">Home</string>
+    <string name="history">History</string>
+    <string name="profile">Profile</string>
+
+    <!-- Stubs -->
+    <string name="transfer_history">Transfer History</string>
+    <string name="no_transfer_history">Your past transfers will appear here</string>
+    <string name="profile_subtitle">Device info and preferences</string>
 </resources>
