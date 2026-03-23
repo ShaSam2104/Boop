@@ -7,11 +7,21 @@ import android.util.Log
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Nfc
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -27,26 +37,18 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.ui.Alignment
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.shashsam.boop.nfc.ConnectionDetails
 import com.shashsam.boop.ui.theme.BoopBottomNavBar
-import com.shashsam.boop.ui.theme.bottomNavItems
+import com.shashsam.boop.ui.theme.NeoBrutalistButton
 import com.shashsam.boop.ui.viewmodels.SettingsUiState
 import com.shashsam.boop.ui.viewmodels.TransferUiState
 import com.shashsam.boop.utils.LocalHapticsEnabled
@@ -66,7 +68,6 @@ fun BoopScaffold(
     settingsState: SettingsUiState,
     permissionsGranted: Boolean,
     onSendClick: () -> Unit,
-    onReceiveClick: () -> Unit,
     onResetClick: () -> Unit,
     onResendBoop: (com.shashsam.boop.ui.models.RecentBoop) -> Unit,
     onResetToReceive: () -> Unit,
@@ -74,11 +75,15 @@ fun BoopScaffold(
     onDismissError: () -> Unit,
     onDismissNfcWarning: () -> Unit,
     onDismissWifiWarning: () -> Unit,
+    onDismissHotspotWarning: () -> Unit,
+    onApproveTransfer: () -> Unit,
+    onRejectTransfer: () -> Unit,
     onNotificationsToggle: (Boolean) -> Unit,
     onVibrationToggle: (Boolean) -> Unit,
     onSoundToggle: (Boolean) -> Unit,
     onDisplayNameChange: (String) -> Unit,
     onDarkModeToggle: (Boolean) -> Unit,
+    onReceivePermissionChange: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     CompositionLocalProvider(LocalHapticsEnabled provides settingsState.vibrationEnabled) {
@@ -104,7 +109,7 @@ fun BoopScaffold(
     LaunchedEffect(transferUiState.transferComplete) {
         if (transferUiState.transferComplete && currentRoute == BoopRoute.TransferProgress.route) {
             Log.d(TAG, "Transfer complete — navigating back after delay")
-            kotlinx.coroutines.delay(2000)
+            kotlinx.coroutines.delay(1000)
             navController.popBackStack()
             onResetToReceive()
         }
@@ -138,13 +143,12 @@ fun BoopScaffold(
                     currentRoute = currentRoute,
                     onItemClick = { item ->
                         Log.d(TAG, "Bottom nav: ${item.route}")
-                        val isOnTabRoute = bottomNavItems.any { it.route == currentRoute }
                         navController.navigate(item.route) {
                             popUpTo(navController.graph.findStartDestination().id) {
-                                saveState = isOnTabRoute
+                                saveState = true
                             }
                             launchSingleTop = true
-                            restoreState = isOnTabRoute
+                            restoreState = true
                         }
                     }
                 )
@@ -157,7 +161,6 @@ fun BoopScaffold(
             settingsState = settingsState,
             permissionsGranted = permissionsGranted,
             onSendClick = onSendClick,
-            onReceiveClick = onReceiveClick,
             onResetClick = onResetClick,
             onResendBoop = onResendBoop,
             onNotificationsToggle = onNotificationsToggle,
@@ -165,13 +168,30 @@ fun BoopScaffold(
             onSoundToggle = onSoundToggle,
             onDisplayNameChange = onDisplayNameChange,
             onDarkModeToggle = onDarkModeToggle,
+            onReceivePermissionChange = onReceivePermissionChange,
             modifier = Modifier.padding(innerPadding)
         )
     }
 
-    // ── NFC Payload BottomSheet ──────────────────────────────────────────
-    transferUiState.receivedPayload?.let { payload ->
-        NfcPayloadBottomSheet(payload = payload, onDismiss = onDismissPayload)
+    // ── NFC Payload BottomSheet (with optional approval buttons) ─────────
+    val pendingApproval = transferUiState.pendingApproval
+    val receivedPayload = transferUiState.receivedPayload
+    if (pendingApproval != null) {
+        NfcPayloadBottomSheet(
+            payload = pendingApproval,
+            showApprovalButtons = true,
+            onApprove = onApproveTransfer,
+            onReject = onRejectTransfer,
+            onDismiss = onRejectTransfer
+        )
+    } else if (receivedPayload != null) {
+        NfcPayloadBottomSheet(
+            payload = receivedPayload,
+            showApprovalButtons = false,
+            onApprove = {},
+            onReject = {},
+            onDismiss = onDismissPayload
+        )
     }
 
     // ── Error Dialog ────────────────────────────────────────────────────
@@ -274,6 +294,42 @@ fun BoopScaffold(
         )
     }
 
+    // ── Hotspot Enabled Warning Dialog ──────────────────────────────────
+    if (transferUiState.hotspotWarning) {
+        AlertDialog(
+            onDismissRequest = onDismissHotspotWarning,
+            icon = {
+                Icon(
+                    imageVector = Icons.Filled.Warning,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error
+                )
+            },
+            title = {
+                Text(
+                    text = "Hotspot is On",
+                    fontWeight = FontWeight.ExtraBold
+                )
+            },
+            text = {
+                Text(text = "Wi-Fi hotspot can interfere with Wi-Fi Direct file transfers. Please turn off your hotspot before using Boop.")
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    onDismissHotspotWarning()
+                    context.startActivity(Intent(Settings.ACTION_WIRELESS_SETTINGS))
+                }) {
+                    Text("Turn Off Hotspot", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = onDismissHotspotWarning) {
+                    Text("Dismiss", fontWeight = FontWeight.Bold)
+                }
+            }
+        )
+    }
+
     } // CompositionLocalProvider
 }
 
@@ -283,9 +339,15 @@ fun BoopScaffold(
 @Composable
 private fun NfcPayloadBottomSheet(
     payload: ConnectionDetails,
+    showApprovalButtons: Boolean,
+    onApprove: () -> Unit,
+    onReject: () -> Unit,
     onDismiss: () -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    // Extract device name from SSID for display
+    val deviceName = Regex("^DIRECT-[a-zA-Z0-9]{2}-(.+)$").find(payload.ssid)?.groupValues?.get(1) ?: payload.ssid
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -310,7 +372,7 @@ private fun NfcPayloadBottomSheet(
                     modifier = Modifier.size(28.dp)
                 )
                 Text(
-                    text = "NFC Payload Received",
+                    text = if (showApprovalButtons) "Transfer from $deviceName" else "NFC Payload Received",
                     style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.ExtraBold,
                     color = MaterialTheme.colorScheme.onSurface
@@ -338,6 +400,38 @@ private fun NfcPayloadBottomSheet(
             PayloadDetailRow(label = "Token", value = payload.token)
             PayloadDetailRow(label = "MAC", value = payload.mac)
             PayloadDetailRow(label = "Port", value = payload.port.toString())
+            if (payload.fileCount > 1) {
+                PayloadDetailRow(label = "Files", value = payload.fileCount.toString())
+            }
+
+            if (showApprovalButtons) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    TextButton(
+                        onClick = onReject,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text(
+                            text = "Reject",
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
+                    NeoBrutalistButton(
+                        onClick = onApprove,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text(
+                            text = "Accept",
+                            fontWeight = FontWeight.ExtraBold
+                        )
+                    }
+                }
+            }
         }
     }
 }
@@ -369,5 +463,6 @@ private fun buildPayloadJsonString(payload: ConnectionDetails): String {
     return org.json.JSONObject().apply {
         put("ssid", payload.ssid)
         put("token", payload.token)
+        if (payload.fileCount > 1) put("fileCount", payload.fileCount)
     }.toString(2)
 }

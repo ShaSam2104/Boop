@@ -1,12 +1,15 @@
 package com.shashsam.boop.ui.viewmodels
 
 import android.app.Application
+import android.content.Intent
 import android.net.Uri
 import android.provider.OpenableColumns
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.shashsam.boop.data.BoopDatabase
+import com.shashsam.boop.data.FriendDao
+import com.shashsam.boop.data.FriendEntity
 import com.shashsam.boop.data.TransferHistoryDao
 import com.shashsam.boop.data.TransferHistoryEntity
 import com.shashsam.boop.nfc.BoopHceService
@@ -71,7 +74,13 @@ data class TransferUiState(
     val recentTransfers: List<RecentBoop> = emptyList(),
     val currentFileName: String? = null,
     val nfcDisabledWarning: Boolean = false,
-    val wifiDisabledWarning: Boolean = false
+    val wifiDisabledWarning: Boolean = false,
+    val hotspotWarning: Boolean = false,
+    val senderFileUri: Uri? = null,
+    val currentFileIndex: Int = 0,
+    val totalFiles: Int = 1,
+    val pendingFileUris: List<Uri> = emptyList(),
+    val pendingApproval: ConnectionDetails? = null
 )
 
 /**
@@ -98,6 +107,13 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
 
     private val historyDao: TransferHistoryDao =
         BoopDatabase.getInstance(application).transferHistoryDao()
+
+    private val friendDao: FriendDao =
+        BoopDatabase.getInstance(application).friendDao()
+
+    private val settingsPrefs = application.getSharedPreferences("boop_settings", android.content.Context.MODE_PRIVATE)
+
+    private var currentConnectionSsid: String? = null
 
     private val _uiState = MutableStateFlow(TransferUiState())
 
@@ -193,6 +209,7 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
      */
     fun prepareSend() {
         Log.d(TAG, "prepareSend()")
+        BoopHceService.connectionFileCount = 1
         _uiState.update {
             it.copy(isSendMode = true, isReceiveMode = false, error = null, transferComplete = false)
         }
@@ -216,6 +233,14 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
     fun startSending(fileUri: Uri) {
         Log.d(TAG, "startSending: $fileUri")
         val context = getApplication<Application>()
+        // Take persistable URI permission so the sender file URI survives in history
+        try {
+            context.contentResolver.takePersistableUriPermission(
+                fileUri, Intent.FLAG_GRANT_READ_URI_PERMISSION
+            )
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not take persistable URI permission for $fileUri", e)
+        }
         // Extract file name from URI for display in Recent Boops
         val fileName = resolveFileName(fileUri)
         transferJob?.cancel()
@@ -226,11 +251,129 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
                     isTransferring = true,
                     transferProgress = 0f,
                     transferComplete = false,
-                    currentFileName = fileName
+                    currentFileName = fileName,
+                    senderFileUri = fileUri
                 )
             }
             TransferManager.sendFile(context, fileUri, BoopHceService.DEFAULT_PORT)
                 .collect { progress -> handleTransferProgress(progress) }
+        }
+    }
+
+    /**
+     * Starts sending multiple files sequentially over a single TCP connection.
+     *
+     * @param fileUris URIs returned by the multi-file picker.
+     */
+    fun startSendingMultiple(fileUris: List<Uri>) {
+        if (fileUris.isEmpty()) return
+        if (fileUris.size == 1) {
+            startSending(fileUris.first())
+            return
+        }
+        Log.d(TAG, "startSendingMultiple: ${fileUris.size} files")
+        val context = getApplication<Application>()
+        // Take persistable URI permissions for all files
+        fileUris.forEach { uri ->
+            try {
+                context.contentResolver.takePersistableUriPermission(
+                    uri, Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+            } catch (e: Exception) {
+                Log.w(TAG, "Could not take persistable URI permission for $uri", e)
+            }
+        }
+        val firstName = resolveFileName(fileUris.first())
+        BoopHceService.connectionFileCount = fileUris.size
+        transferJob?.cancel()
+        transferJob = viewModelScope.launch {
+            appendLog("🚀 Starting multi-file transfer (${fileUris.size} files)…")
+            _uiState.update {
+                it.copy(
+                    isTransferring = true,
+                    transferProgress = 0f,
+                    transferComplete = false,
+                    currentFileName = firstName,
+                    senderFileUri = fileUris.first(),
+                    totalFiles = fileUris.size,
+                    currentFileIndex = 0,
+                    pendingFileUris = fileUris
+                )
+            }
+            TransferManager.sendFiles(context, fileUris, BoopHceService.DEFAULT_PORT)
+                .collect { progress -> handleMultiFileProgress(progress) }
+        }
+    }
+
+    private fun handleMultiFileProgress(progress: com.shashsam.boop.transfer.TransferProgress) {
+        when {
+            progress.error != null -> {
+                Log.e(TAG, "Multi-file transfer error: ${progress.error}")
+                appendLog("❌ Transfer error: ${progress.error}", isError = true)
+                _uiState.update { it.copy(isTransferring = false, error = progress.error) }
+            }
+            // Per-file completion: fileName is set and bytes match total
+            progress.fileName != null && progress.bytesTransferred == progress.totalBytes && progress.totalBytes > 0 -> {
+                val currentState = _uiState.value
+                // Insert history for THIS file
+                val historyUri = if (currentState.isSendMode) {
+                    currentState.pendingFileUris.getOrNull(progress.fileIndex)?.toString()
+                } else {
+                    progress.savedUri?.toString()
+                }
+                val entity = TransferHistoryEntity(
+                    fileName = progress.fileName,
+                    fileSize = progress.totalBytes,
+                    mimeType = progress.mimeType ?: "",
+                    timestamp = System.currentTimeMillis(),
+                    wasSender = currentState.isSendMode,
+                    fileUriString = historyUri
+                )
+                viewModelScope.launch { historyDao.insert(entity) }
+                appendLog("✅ File ${progress.fileIndex + 1}/${progress.totalFiles}: ${progress.fileName}")
+
+                if (progress.isComplete) {
+                    // Save friend on receiver side
+                    if (!currentState.isSendMode) {
+                        saveFriendIfNeeded(currentConnectionSsid)
+                    }
+                    // Last file — mark transfer as done
+                    _uiState.update { state ->
+                        state.copy(
+                            isTransferring = false,
+                            transferProgress = 1f,
+                            transferComplete = true,
+                            savedFileUri = progress.savedUri,
+                            currentFileName = progress.fileName,
+                            currentFileIndex = progress.fileIndex,
+                            totalFiles = progress.totalFiles
+                        )
+                    }
+                } else {
+                    // More files to come — reset progress for next file
+                    _uiState.update {
+                        it.copy(
+                            transferProgress = 0f,
+                            currentFileName = progress.fileName,
+                            currentFileIndex = progress.fileIndex,
+                            totalFiles = progress.totalFiles
+                        )
+                    }
+                }
+            }
+            else -> {
+                // In-progress chunk update
+                _uiState.update {
+                    it.copy(
+                        transferProgress = progress.fraction,
+                        transferredBytes = progress.bytesTransferred,
+                        totalBytes = progress.totalBytes,
+                        currentFileIndex = progress.fileIndex,
+                        totalFiles = progress.totalFiles,
+                        currentFileName = progress.fileName ?: it.currentFileName
+                    )
+                }
+            }
         }
     }
 
@@ -280,8 +423,38 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
         }
         Log.d(TAG, "onNfcPayloadReceived: mac=${details.mac} port=${details.port} ssid=${details.ssid} token=${details.token}")
         appendLog("📲 NFC tap! Sender MAC=${details.mac} Port=${details.port}")
+        currentConnectionSsid = details.ssid
         _uiState.update { it.copy(isNfcReading = false, receivedPayload = details) }
 
+        // Check receive permission setting
+        val permission = settingsPrefs.getString("receive_permission", "friends") ?: "friends"
+        viewModelScope.launch {
+            val autoAccept = permission == "friends" && isFriend(details.ssid)
+            if (autoAccept) {
+                Log.d(TAG, "Auto-accepting transfer from friend SSID=${details.ssid}")
+                proceedWithReceive(details)
+            } else {
+                Log.d(TAG, "Awaiting user approval for transfer from SSID=${details.ssid}")
+                _uiState.update { it.copy(pendingApproval = details) }
+            }
+        }
+    }
+
+    fun approveIncomingTransfer() {
+        val details = _uiState.value.pendingApproval ?: return
+        Log.d(TAG, "approveIncomingTransfer")
+        _uiState.update { it.copy(pendingApproval = null) }
+        proceedWithReceive(details)
+    }
+
+    fun rejectIncomingTransfer() {
+        Log.d(TAG, "rejectIncomingTransfer")
+        _uiState.update { it.copy(pendingApproval = null, receivedPayload = null) }
+        currentConnectionSsid = null
+        prepareReceive()
+    }
+
+    private fun proceedWithReceive(details: ConnectionDetails) {
         val context = getApplication<Application>()
         transferJob?.cancel()
         transferJob = viewModelScope.launch {
@@ -322,13 +495,47 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
             }
 
             // 3. Connected — open TCP receive on the Group Owner IP.
-            Log.d(TAG, "Wi-Fi Direct connected — starting TCP receive on ${GROUP_OWNER_IP}:${details.port}")
+            Log.d(TAG, "Wi-Fi Direct connected — starting TCP receive on ${GROUP_OWNER_IP}:${details.port} (fileCount=${details.fileCount})")
             appendLog("🚀 Starting file receive (${GROUP_OWNER_IP}:${details.port})…")
             _uiState.update {
-                it.copy(isTransferring = true, transferProgress = 0f, transferComplete = false, receivedPayload = null)
+                it.copy(
+                    isTransferring = true,
+                    transferProgress = 0f,
+                    transferComplete = false,
+                    receivedPayload = null,
+                    pendingApproval = null,
+                    totalFiles = details.fileCount
+                )
             }
-            TransferManager.receiveFile(context, GROUP_OWNER_IP, details.port)
-                .collect { progress -> handleTransferProgress(progress) }
+            if (details.fileCount > 1) {
+                TransferManager.receiveFiles(context, GROUP_OWNER_IP, details.port)
+                    .collect { progress -> handleMultiFileProgress(progress) }
+            } else {
+                TransferManager.receiveFile(context, GROUP_OWNER_IP, details.port)
+                    .collect { progress -> handleTransferProgress(progress) }
+            }
+        }
+    }
+
+    private suspend fun isFriend(ssid: String): Boolean = friendDao.getBySsid(ssid) != null
+
+    private fun saveFriendIfNeeded(ssid: String?) {
+        if (ssid.isNullOrBlank()) return
+        viewModelScope.launch {
+            val existing = friendDao.getBySsid(ssid)
+            if (existing != null) {
+                friendDao.updateLastSeen(ssid, System.currentTimeMillis())
+            } else {
+                val name = Regex("^DIRECT-[a-zA-Z0-9]{2}-(.+)$").find(ssid)?.groupValues?.get(1) ?: ssid
+                friendDao.insert(
+                    FriendEntity(
+                        ssid = ssid,
+                        displayName = name,
+                        firstSeenTimestamp = System.currentTimeMillis(),
+                        lastSeenTimestamp = System.currentTimeMillis()
+                    )
+                )
+            }
         }
     }
 
@@ -352,13 +559,23 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
                             (progress.savedUri?.let { " → Saved to Downloads" } ?: "")
                 )
                 val currentState = _uiState.value
+                // Save friend on receiver side
+                if (!currentState.isSendMode) {
+                    saveFriendIfNeeded(currentConnectionSsid)
+                }
+                // For sender, use the original file URI; for receiver, use the saved URI
+                val historyUri = if (currentState.isSendMode) {
+                    currentState.senderFileUri?.toString()
+                } else {
+                    progress.savedUri?.toString()
+                }
                 val entity = TransferHistoryEntity(
                     fileName = progress.fileName ?: currentState.currentFileName ?: "Unknown file",
                     fileSize = progress.totalBytes,
                     mimeType = progress.mimeType ?: "",
                     timestamp = System.currentTimeMillis(),
                     wasSender = currentState.isSendMode,
-                    fileUriString = progress.savedUri?.toString()
+                    fileUriString = historyUri
                 )
                 viewModelScope.launch { historyDao.insert(entity) }
                 _uiState.update { state ->
@@ -406,6 +623,14 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
         _uiState.update { it.copy(wifiDisabledWarning = false) }
     }
 
+    fun setHotspotWarning(show: Boolean) {
+        _uiState.update { it.copy(hotspotWarning = show) }
+    }
+
+    fun dismissHotspotWarning() {
+        _uiState.update { it.copy(hotspotWarning = false) }
+    }
+
     /** Dismisses the NFC payload BottomSheet by clearing [TransferUiState.receivedPayload]. */
     fun dismissPayloadSheet() {
         _uiState.update { it.copy(receivedPayload = null) }
@@ -444,22 +669,24 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
     /** Resets the entire transfer state back to idle. */
     fun reset() {
         transferJob?.cancel()
-        wifiDirectManager.reset()
+        currentConnectionSsid = null
         val recent = _uiState.value.recentTransfers
         _uiState.value = TransferUiState(recentTransfers = recent)
+        viewModelScope.launch { wifiDirectManager.reset() }
         Log.d(TAG, "State reset to Idle")
     }
 
     /** Resets state and re-arms receive mode so the next NFC tap works immediately. */
     fun resetToReceive() {
         transferJob?.cancel()
-        wifiDirectManager.reset()
+        currentConnectionSsid = null
         val recent = _uiState.value.recentTransfers
         _uiState.value = TransferUiState(
             recentTransfers = recent,
             isReceiveMode = true,
             isNfcReading = true
         )
+        viewModelScope.launch { wifiDirectManager.reset() }
         Log.d(TAG, "State reset to Receive mode")
     }
 

@@ -1,5 +1,7 @@
 package com.shashsam.boop.ui.screens
 
+import android.content.Intent
+import android.net.Uri
 import android.util.Log
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -13,13 +15,18 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.DarkMode
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.LocalCafe
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.DarkMode
+import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Vibration
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.filled.Warning
@@ -30,6 +37,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
@@ -43,6 +52,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -53,6 +64,7 @@ import com.shashsam.boop.ui.theme.BoopShapeMedium
 import com.shashsam.boop.ui.theme.BoopTheme
 import com.shashsam.boop.ui.theme.GlassCard
 import com.shashsam.boop.ui.theme.LocalBoopTokens
+import com.shashsam.boop.ui.theme.NeoBrutalistButton
 import com.shashsam.boop.ui.theme.WarningAmber
 import com.shashsam.boop.ui.viewmodels.SettingsUiState
 import com.shashsam.boop.utils.rememberBoopHaptics
@@ -63,7 +75,8 @@ private const val TAG = "SettingsScreen"
  * Settings screen with dark neo-brutalist styling.
  *
  * Displays toggle rows for Notifications, Vibration, and Sound,
- * an editable Identity row, and a permissions warning card at the bottom.
+ * an editable Identity row, receive permission selector,
+ * an About section, and a permissions warning card.
  */
 @Composable
 fun SettingsScreen(
@@ -74,13 +87,16 @@ fun SettingsScreen(
     onSoundToggle: (Boolean) -> Unit,
     onDisplayNameChange: (String) -> Unit,
     onDarkModeToggle: (Boolean) -> Unit,
+    onReceivePermissionChange: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     Log.d(TAG, "SettingsScreen recompose — state=$settingsState")
 
     val tokens = LocalBoopTokens.current
     val haptics = rememberBoopHaptics()
+    val context = LocalContext.current
     var showNameDialog by remember { mutableStateOf(false) }
+    var showPermissionDialog by remember { mutableStateOf(false) }
 
     Column(
         modifier = modifier
@@ -190,7 +206,80 @@ fun SettingsScreen(
                 }
             )
 
+            SettingsDivider()
+
+            // Receive Permission
+            SettingsNavigationRow(
+                icon = Icons.Filled.Shield,
+                label = "Receive Permission",
+                value = if (settingsState.receivePermission == "friends") "Friends" else "No one",
+                onClick = {
+                    Log.d(TAG, "Receive permission row clicked")
+                    showPermissionDialog = true
+                }
+            )
+
             Spacer(modifier = Modifier.height(24.dp))
+
+            // ── About section ────────────────────────────────────────────────
+            GlassCard(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Info,
+                            contentDescription = null,
+                            tint = tokens.accent,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Column {
+                            Text(
+                                text = "Boop",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = MaterialTheme.colorScheme.onBackground
+                            )
+                            Text(
+                                text = "P2P file sharing via NFC + Wi-Fi Direct",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = tokens.textSecondary
+                            )
+                        }
+                    }
+
+                    NeoBrutalistButton(
+                        onClick = {
+                            try {
+                                val upiUri = Uri.parse("upi://pay?pa=03.shubhamshah-1@oksbi&pn=Boop&tn=Buy%20me%20a%20Chai&cu=INR")
+                                context.startActivity(Intent(Intent.ACTION_VIEW, upiUri))
+                            } catch (e: Exception) {
+                                Log.w(TAG, "No UPI app available", e)
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.LocalCafe,
+                            contentDescription = null,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Buy me a Chai",
+                            fontWeight = FontWeight.ExtraBold
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
 
             // ── Warning card ────────────────────────────────────────────────
             PermissionsWarningCard()
@@ -209,6 +298,19 @@ fun SettingsScreen(
                 showNameDialog = false
             },
             onDismiss = { showNameDialog = false }
+        )
+    }
+
+    // ── Receive permission dialog ───────────────────────────────────────────
+    if (showPermissionDialog) {
+        ReceivePermissionDialog(
+            currentValue = settingsState.receivePermission,
+            onSelect = { value ->
+                Log.d(TAG, "Receive permission changed to=$value")
+                onReceivePermissionChange(value)
+                showPermissionDialog = false
+            },
+            onDismiss = { showPermissionDialog = false }
         )
     }
 }
@@ -433,6 +535,103 @@ private fun DisplayNameDialog(
     )
 }
 
+// ─── Receive Permission Dialog ──────────────────────────────────────────────
+
+@Composable
+private fun ReceivePermissionDialog(
+    currentValue: String,
+    onSelect: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        shape = BoopShapeMedium,
+        containerColor = MaterialTheme.colorScheme.surface,
+        icon = {
+            Icon(
+                imageVector = Icons.Filled.Shield,
+                contentDescription = null,
+                tint = BoopBrandPurple,
+                modifier = Modifier.size(28.dp)
+            )
+        },
+        title = {
+            Text(
+                text = "Receive Permission",
+                fontWeight = FontWeight.ExtraBold
+            )
+        },
+        text = {
+            Column(modifier = Modifier.selectableGroup()) {
+                PermissionOption(
+                    label = "Friends",
+                    description = "Auto-accept from people you've shared with before",
+                    selected = currentValue == "friends",
+                    onClick = { onSelect("friends") }
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                PermissionOption(
+                    label = "No one",
+                    description = "Always ask before accepting",
+                    selected = currentValue == "no_one",
+                    onClick = { onSelect("no_one") }
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(
+                    text = "Cancel",
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    )
+}
+
+@Composable
+private fun PermissionOption(
+    label: String,
+    description: String,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .selectable(
+                selected = selected,
+                onClick = onClick,
+                role = Role.RadioButton
+            )
+            .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        RadioButton(
+            selected = selected,
+            onClick = null,
+            colors = RadioButtonDefaults.colors(
+                selectedColor = BoopBrandPurple
+            )
+        )
+        Column {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                text = description,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
 // ─── Preview ────────────────────────────────────────────────────────────────
 
 @Preview(showBackground = true)
@@ -451,7 +650,8 @@ private fun SettingsScreenPreview() {
             onVibrationToggle = {},
             onSoundToggle = {},
             onDisplayNameChange = {},
-            onDarkModeToggle = {}
+            onDarkModeToggle = {},
+            onReceivePermissionChange = {}
         )
     }
 }
@@ -467,7 +667,8 @@ private fun SettingsScreenLightPreview() {
             onVibrationToggle = {},
             onSoundToggle = {},
             onDisplayNameChange = {},
-            onDarkModeToggle = {}
+            onDarkModeToggle = {},
+            onReceivePermissionChange = {}
         )
     }
 }

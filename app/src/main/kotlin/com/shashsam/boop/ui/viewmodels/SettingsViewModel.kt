@@ -17,6 +17,7 @@ private const val KEY_VIBRATION = "vibration_enabled"
 private const val KEY_SOUND = "sound_enabled"
 private const val KEY_DISPLAY_NAME = "display_name"
 private const val KEY_DARK_MODE = "dark_mode_enabled"
+private const val KEY_RECEIVE_PERMISSION = "receive_permission"
 
 /**
  * Aggregate settings state exposed to the Settings screen.
@@ -26,7 +27,8 @@ data class SettingsUiState(
     val vibrationEnabled: Boolean = true,
     val soundEnabled: Boolean = true,
     val displayName: String = "My Device",
-    val darkModeEnabled: Boolean = true
+    val darkModeEnabled: Boolean = true,
+    val receivePermission: String = "friends"
 )
 
 /**
@@ -46,7 +48,8 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             vibrationEnabled = prefs.getBoolean(KEY_VIBRATION, true),
             soundEnabled = prefs.getBoolean(KEY_SOUND, true),
             displayName = prefs.getString(KEY_DISPLAY_NAME, "My Device") ?: "My Device",
-            darkModeEnabled = prefs.getBoolean(KEY_DARK_MODE, true)
+            darkModeEnabled = prefs.getBoolean(KEY_DARK_MODE, true),
+            receivePermission = prefs.getString(KEY_RECEIVE_PERMISSION, "friends") ?: "friends"
         ).also { Log.d(TAG, "Loaded settings: $it") }
     }
 
@@ -78,5 +81,11 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         Log.d(TAG, "setDarkMode=$enabled")
         prefs.edit().putBoolean(KEY_DARK_MODE, enabled).apply()
         _uiState.update { it.copy(darkModeEnabled = enabled) }
+    }
+
+    fun setReceivePermission(value: String) {
+        Log.d(TAG, "setReceivePermission=$value")
+        prefs.edit().putString(KEY_RECEIVE_PERMISSION, value).apply()
+        _uiState.update { it.copy(receivePermission = value) }
     }
 }
