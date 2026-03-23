@@ -13,7 +13,6 @@ class SettingsUiStateTest {
         assertTrue("notifications default true", state.notificationsEnabled)
         assertTrue("vibration default true", state.vibrationEnabled)
         assertTrue("sound default true", state.soundEnabled)
-        assertTrue("location default true", state.locationEnabled)
         assertTrue("dark mode default true", state.darkModeEnabled)
     }
 
@@ -30,7 +29,6 @@ class SettingsUiStateTest {
         // Other fields unchanged
         assertTrue(state.vibrationEnabled)
         assertTrue(state.soundEnabled)
-        assertTrue(state.locationEnabled)
     }
 
     @Test
@@ -44,13 +42,11 @@ class SettingsUiStateTest {
         val state = SettingsUiState(
             notificationsEnabled = false,
             vibrationEnabled = false,
-            soundEnabled = false,
-            locationEnabled = false
+            soundEnabled = false
         )
         assertFalse(state.notificationsEnabled)
         assertFalse(state.vibrationEnabled)
         assertFalse(state.soundEnabled)
-        assertFalse(state.locationEnabled)
     }
 
     @Test

@@ -17,7 +17,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.DarkMode
@@ -63,7 +62,7 @@ private const val TAG = "SettingsScreen"
 /**
  * Settings screen with dark neo-brutalist styling.
  *
- * Displays toggle rows for Notifications, Location, Vibration, and Sound,
+ * Displays toggle rows for Notifications, Vibration, and Sound,
  * an editable Identity row, and a permissions warning card at the bottom.
  */
 @Composable
@@ -71,7 +70,6 @@ fun SettingsScreen(
     settingsState: SettingsUiState,
     onBackClick: () -> Unit,
     onNotificationsToggle: (Boolean) -> Unit,
-    onLocationToggle: (Boolean) -> Unit,
     onVibrationToggle: (Boolean) -> Unit,
     onSoundToggle: (Boolean) -> Unit,
     onDisplayNameChange: (String) -> Unit,
@@ -134,20 +132,6 @@ fun SettingsScreen(
                     Log.d(TAG, "Notifications toggled=$it")
                     haptics.tick()
                     onNotificationsToggle(it)
-                }
-            )
-
-            SettingsDivider()
-
-            // Location
-            SettingsToggleRow(
-                icon = Icons.Filled.LocationOn,
-                label = "Location",
-                checked = settingsState.locationEnabled,
-                onCheckedChange = {
-                    Log.d(TAG, "Location toggled=$it")
-                    haptics.tick()
-                    onLocationToggle(it)
                 }
             )
 
@@ -369,7 +353,7 @@ private fun PermissionsWarningCard(modifier: Modifier = Modifier) {
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = "Boop requires NFC, Wi-Fi, and nearby device permissions " +
-                            "to discover peers and transfer files. Some toggles above " +
+                            "to discover peers and transfer files. Toggles above " +
                             "control in-app behavior only and do not revoke system permissions.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -460,12 +444,10 @@ private fun SettingsScreenPreview() {
                 notificationsEnabled = true,
                 vibrationEnabled = false,
                 soundEnabled = true,
-                locationEnabled = true,
                 displayName = "Pixel 8 Pro"
             ),
             onBackClick = {},
             onNotificationsToggle = {},
-            onLocationToggle = {},
             onVibrationToggle = {},
             onSoundToggle = {},
             onDisplayNameChange = {},
@@ -482,7 +464,6 @@ private fun SettingsScreenLightPreview() {
             settingsState = SettingsUiState(),
             onBackClick = {},
             onNotificationsToggle = {},
-            onLocationToggle = {},
             onVibrationToggle = {},
             onSoundToggle = {},
             onDisplayNameChange = {},

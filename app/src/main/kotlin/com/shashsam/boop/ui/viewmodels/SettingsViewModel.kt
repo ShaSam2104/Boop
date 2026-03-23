@@ -15,7 +15,6 @@ private const val PREFS_NAME = "boop_settings"
 private const val KEY_NOTIFICATIONS = "notifications_enabled"
 private const val KEY_VIBRATION = "vibration_enabled"
 private const val KEY_SOUND = "sound_enabled"
-private const val KEY_LOCATION = "location_enabled"
 private const val KEY_DISPLAY_NAME = "display_name"
 private const val KEY_DARK_MODE = "dark_mode_enabled"
 
@@ -26,7 +25,6 @@ data class SettingsUiState(
     val notificationsEnabled: Boolean = true,
     val vibrationEnabled: Boolean = true,
     val soundEnabled: Boolean = true,
-    val locationEnabled: Boolean = true,
     val displayName: String = "My Device",
     val darkModeEnabled: Boolean = true
 )
@@ -47,7 +45,6 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             notificationsEnabled = prefs.getBoolean(KEY_NOTIFICATIONS, true),
             vibrationEnabled = prefs.getBoolean(KEY_VIBRATION, true),
             soundEnabled = prefs.getBoolean(KEY_SOUND, true),
-            locationEnabled = prefs.getBoolean(KEY_LOCATION, true),
             displayName = prefs.getString(KEY_DISPLAY_NAME, "My Device") ?: "My Device",
             darkModeEnabled = prefs.getBoolean(KEY_DARK_MODE, true)
         ).also { Log.d(TAG, "Loaded settings: $it") }
@@ -69,12 +66,6 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         Log.d(TAG, "setSoundEnabled=$enabled")
         prefs.edit().putBoolean(KEY_SOUND, enabled).apply()
         _uiState.update { it.copy(soundEnabled = enabled) }
-    }
-
-    fun setLocationEnabled(enabled: Boolean) {
-        Log.d(TAG, "setLocationEnabled=$enabled")
-        prefs.edit().putBoolean(KEY_LOCATION, enabled).apply()
-        _uiState.update { it.copy(locationEnabled = enabled) }
     }
 
     fun setDisplayName(name: String) {
