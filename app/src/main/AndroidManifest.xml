@@ -68,6 +68,26 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="application/com.shashsam.boop" />
             </intent-filter>
+            <!-- Enable NFC tech discovery for ISO-DEP (HCE) when app is not running -->
+            <intent-filter>
+                <action android:name="android.nfc.action.TECH_DISCOVERED" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <meta-data
+                android:name="android.nfc.action.TECH_DISCOVERED"
+                android:resource="@xml/nfc_tech_filter" />
+            <!-- Accept files from Android share sheet (single file) -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+            <!-- Accept files from Android share sheet (multiple files) -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
         </activity>
 
         <!-- HCE Service for NFC card emulation (Sender side) -->

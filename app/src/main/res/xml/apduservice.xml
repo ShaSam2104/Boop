@@ -4,7 +4,9 @@
     <aid-group
         android:category="other"
         android:description="@string/hce_aid_group_description">
-        <!-- Proprietary AID for Boop P2P handshake -->
+        <!-- Proprietary AID for Boop P2P handshake (foreground reader mode) -->
         <aid-filter android:name="F0426F6F7001" />
+        <!-- NDEF Application AID for Type 4 Tag emulation (cold-start discovery) -->
+        <aid-filter android:name="D2760000850101" />
     </aid-group>
 </host-apdu-service>

@@ -30,7 +30,8 @@ data class ConnectionDetails(
     val mac: String,
     val port: Int,
     val ssid: String = "",
-    val token: String = ""
+    val token: String = "",
+    val fileCount: Int = 1
 )
 
 /** Represents the current state of the NFC reader on the **Receiver** device. */
@@ -337,7 +338,8 @@ class NfcReader(private val nfcAdapter: NfcAdapter?) {
                     mac = obj.getString("mac"),
                     port = obj.getInt("port"),
                     ssid = obj.optString("ssid", ""),
-                    token = obj.optString("token", "")
+                    token = obj.optString("token", ""),
+                    fileCount = obj.optInt("fileCount", 1)
                 )
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to parse JSON payload: $json", e)
