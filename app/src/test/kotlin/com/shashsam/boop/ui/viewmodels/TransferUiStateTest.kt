@@ -11,13 +11,13 @@ import org.junit.Test
 class TransferUiStateTest {
 
     @Test
-    fun `default TransferUiState is idle`() {
+    fun `default TransferUiState is in receive mode`() {
         val state = TransferUiState()
         assertFalse(state.isTransferring)
         assertFalse(state.isSendMode)
-        assertFalse(state.isReceiveMode)
+        assertTrue(state.isReceiveMode)
         assertFalse(state.isNfcBroadcasting)
-        assertFalse(state.isNfcReading)
+        assertTrue(state.isNfcReading)
         assertFalse(state.isWifiConnecting)
         assertFalse(state.isWifiConnected)
         assertFalse(state.transferComplete)

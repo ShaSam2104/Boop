@@ -1,6 +1,8 @@
 package com.shashsam.boop.ui.navigation
 
 import android.content.Context
+import android.content.Intent
+import android.provider.Settings
 import android.util.Log
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.slideInVertically
@@ -44,6 +46,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.shashsam.boop.nfc.ConnectionDetails
 import com.shashsam.boop.ui.theme.BoopBottomNavBar
+import com.shashsam.boop.ui.theme.bottomNavItems
 import com.shashsam.boop.ui.viewmodels.SettingsUiState
 import com.shashsam.boop.ui.viewmodels.TransferUiState
 import com.shashsam.boop.utils.LocalHapticsEnabled
@@ -66,10 +69,12 @@ fun BoopScaffold(
     onReceiveClick: () -> Unit,
     onResetClick: () -> Unit,
     onResendBoop: (com.shashsam.boop.ui.models.RecentBoop) -> Unit,
+    onResetToReceive: () -> Unit,
     onDismissPayload: () -> Unit,
     onDismissError: () -> Unit,
+    onDismissNfcWarning: () -> Unit,
+    onDismissWifiWarning: () -> Unit,
     onNotificationsToggle: (Boolean) -> Unit,
-    onLocationToggle: (Boolean) -> Unit,
     onVibrationToggle: (Boolean) -> Unit,
     onSoundToggle: (Boolean) -> Unit,
     onDisplayNameChange: (String) -> Unit,
@@ -101,6 +106,7 @@ fun BoopScaffold(
             Log.d(TAG, "Transfer complete — navigating back after delay")
             kotlinx.coroutines.delay(2000)
             navController.popBackStack()
+            onResetToReceive()
         }
     }
 
@@ -132,12 +138,13 @@ fun BoopScaffold(
                     currentRoute = currentRoute,
                     onItemClick = { item ->
                         Log.d(TAG, "Bottom nav: ${item.route}")
+                        val isOnTabRoute = bottomNavItems.any { it.route == currentRoute }
                         navController.navigate(item.route) {
                             popUpTo(navController.graph.findStartDestination().id) {
-                                saveState = true
+                                saveState = isOnTabRoute
                             }
                             launchSingleTop = true
-                            restoreState = true
+                            restoreState = isOnTabRoute
                         }
                     }
                 )
@@ -154,7 +161,6 @@ fun BoopScaffold(
             onResetClick = onResetClick,
             onResendBoop = onResendBoop,
             onNotificationsToggle = onNotificationsToggle,
-            onLocationToggle = onLocationToggle,
             onVibrationToggle = onVibrationToggle,
             onSoundToggle = onSoundToggle,
             onDisplayNameChange = onDisplayNameChange,
@@ -191,6 +197,78 @@ fun BoopScaffold(
             confirmButton = {
                 TextButton(onClick = onDismissError) {
                     Text("OK", fontWeight = FontWeight.Bold)
+                }
+            }
+        )
+    }
+
+    // ── NFC Disabled Warning Dialog ──────────────────────────────────────
+    if (transferUiState.nfcDisabledWarning) {
+        AlertDialog(
+            onDismissRequest = onDismissNfcWarning,
+            icon = {
+                Icon(
+                    imageVector = Icons.Filled.Warning,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error
+                )
+            },
+            title = {
+                Text(
+                    text = "NFC is Disabled",
+                    fontWeight = FontWeight.ExtraBold
+                )
+            },
+            text = {
+                Text(text = "Boop requires NFC to discover nearby devices. Please enable NFC in your device settings.")
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    onDismissNfcWarning()
+                    context.startActivity(Intent(Settings.ACTION_NFC_SETTINGS))
+                }) {
+                    Text("Open Settings", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = onDismissNfcWarning) {
+                    Text("Dismiss", fontWeight = FontWeight.Bold)
+                }
+            }
+        )
+    }
+
+    // ── Wi-Fi Disabled Warning Dialog ────────────────────────────────────
+    if (transferUiState.wifiDisabledWarning) {
+        AlertDialog(
+            onDismissRequest = onDismissWifiWarning,
+            icon = {
+                Icon(
+                    imageVector = Icons.Filled.Warning,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error
+                )
+            },
+            title = {
+                Text(
+                    text = "Wi-Fi is Disabled",
+                    fontWeight = FontWeight.ExtraBold
+                )
+            },
+            text = {
+                Text(text = "Boop needs Wi-Fi Direct for file transfers. If your hotspot is on, please turn it off.")
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    onDismissWifiWarning()
+                    context.startActivity(Intent(Settings.ACTION_WIFI_SETTINGS))
+                }) {
+                    Text("Open Settings", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = onDismissWifiWarning) {
+                    Text("Dismiss", fontWeight = FontWeight.Bold)
                 }
             }
         )

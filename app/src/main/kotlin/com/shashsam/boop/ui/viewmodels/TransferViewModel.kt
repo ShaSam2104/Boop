@@ -6,6 +6,9 @@ import android.provider.OpenableColumns
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.shashsam.boop.data.BoopDatabase
+import com.shashsam.boop.data.TransferHistoryDao
+import com.shashsam.boop.data.TransferHistoryEntity
 import com.shashsam.boop.nfc.BoopHceService
 import com.shashsam.boop.nfc.ConnectionDetails
 import com.shashsam.boop.transfer.TransferManager
@@ -54,9 +57,9 @@ data class TransferUiState(
     val transferProgress: Float = 0f,
     val isTransferring: Boolean = false,
     val isSendMode: Boolean = false,
-    val isReceiveMode: Boolean = false,
+    val isReceiveMode: Boolean = true,
     val isNfcBroadcasting: Boolean = false,
-    val isNfcReading: Boolean = false,
+    val isNfcReading: Boolean = true,
     val isWifiConnecting: Boolean = false,
     val isWifiConnected: Boolean = false,
     val transferComplete: Boolean = false,
@@ -66,7 +69,9 @@ data class TransferUiState(
     val error: String? = null,
     val receivedPayload: ConnectionDetails? = null,
     val recentTransfers: List<RecentBoop> = emptyList(),
-    val currentFileName: String? = null
+    val currentFileName: String? = null,
+    val nfcDisabledWarning: Boolean = false,
+    val wifiDisabledWarning: Boolean = false
 )
 
 /**
@@ -91,6 +96,9 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
     /** Exposed so [MainActivity][com.shashsam.boop.MainActivity] can call register/unregister. */
     val wifiDirectManager = WifiDirectManager(application)
 
+    private val historyDao: TransferHistoryDao =
+        BoopDatabase.getInstance(application).transferHistoryDao()
+
     private val _uiState = MutableStateFlow(TransferUiState())
 
     /** Observable UI state for the home screen. */
@@ -101,7 +109,26 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
     init {
         wifiDirectManager.initialize()
         observeWifiDirectState()
+        observeHistory()
     }
+
+    private fun observeHistory() {
+        viewModelScope.launch {
+            historyDao.getAll().collect { entities ->
+                val boops = entities.map { it.toRecentBoop() }
+                _uiState.update { it.copy(recentTransfers = boops) }
+            }
+        }
+    }
+
+    private fun TransferHistoryEntity.toRecentBoop(): RecentBoop = RecentBoop(
+        fileName = fileName,
+        fileSize = fileSize,
+        mimeType = mimeType,
+        timestamp = timestamp,
+        wasSender = wasSender,
+        fileUri = fileUriString?.let { Uri.parse(it) }
+    )
 
     // ─── Wi-Fi Direct observer ────────────────────────────────────────────────
 
@@ -324,21 +351,23 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
                     "✅ Transfer complete! $sizeStr" +
                             (progress.savedUri?.let { " → Saved to Downloads" } ?: "")
                 )
+                val currentState = _uiState.value
+                val entity = TransferHistoryEntity(
+                    fileName = progress.fileName ?: currentState.currentFileName ?: "Unknown file",
+                    fileSize = progress.totalBytes,
+                    mimeType = progress.mimeType ?: "",
+                    timestamp = System.currentTimeMillis(),
+                    wasSender = currentState.isSendMode,
+                    fileUriString = progress.savedUri?.toString()
+                )
+                viewModelScope.launch { historyDao.insert(entity) }
                 _uiState.update { state ->
-                    val boop = RecentBoop(
-                        fileName = state.currentFileName ?: "Unknown file",
-                        fileSize = progress.totalBytes,
-                        mimeType = "",
-                        timestamp = System.currentTimeMillis(),
-                        wasSender = state.isSendMode,
-                        fileUri = progress.savedUri
-                    )
                     state.copy(
                         isTransferring = false,
                         transferProgress = 1f,
                         transferComplete = true,
                         savedFileUri = progress.savedUri,
-                        recentTransfers = state.recentTransfers + boop
+                        currentFileName = progress.fileName ?: state.currentFileName
                     )
                 }
             }
@@ -359,6 +388,22 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
                 }
             }
         }
+    }
+
+    fun setNfcWarning(show: Boolean) {
+        _uiState.update { it.copy(nfcDisabledWarning = show) }
+    }
+
+    fun setWifiWarning(show: Boolean) {
+        _uiState.update { it.copy(wifiDisabledWarning = show) }
+    }
+
+    fun dismissNfcWarning() {
+        _uiState.update { it.copy(nfcDisabledWarning = false) }
+    }
+
+    fun dismissWifiWarning() {
+        _uiState.update { it.copy(wifiDisabledWarning = false) }
     }
 
     /** Dismisses the NFC payload BottomSheet by clearing [TransferUiState.receivedPayload]. */
@@ -400,10 +445,22 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
     fun reset() {
         transferJob?.cancel()
         wifiDirectManager.reset()
-        // Preserve recent transfers across resets
         val recent = _uiState.value.recentTransfers
         _uiState.value = TransferUiState(recentTransfers = recent)
         Log.d(TAG, "State reset to Idle")
+    }
+
+    /** Resets state and re-arms receive mode so the next NFC tap works immediately. */
+    fun resetToReceive() {
+        transferJob?.cancel()
+        wifiDirectManager.reset()
+        val recent = _uiState.value.recentTransfers
+        _uiState.value = TransferUiState(
+            recentTransfers = recent,
+            isReceiveMode = true,
+            isNfcReading = true
+        )
+        Log.d(TAG, "State reset to Receive mode")
     }
 
     override fun onCleared() {
