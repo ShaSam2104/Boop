@@ -25,6 +25,7 @@ Boop is an Android P2P file-sharing app. Two devices share files by tapping toge
 - **Jetpack Compose + Material Design 3** — no XML layouts
 - **Jetpack Navigation Compose 2.7.7** — multi-screen navigation with bottom nav
 - **Kotlin Coroutines & Flows** — no raw threads or callbacks
+- **Room 2.6.1 + KSP 2.0.0** — local SQLite persistence for transfer history
 - **Gradle 8.6 / AGP 8.3.2** — version catalog in `gradle/libs.versions.toml`
 - **minSdk 26 / compileSdk 34**
 
@@ -37,7 +38,7 @@ Boop is an Android P2P file-sharing app. Two devices share files by tapping toge
 `MainActivity` hosts `BoopTheme > Surface > BoopScaffold`. The scaffold contains:
 - **Bottom nav bar** (`BoopBottomNavBar`): Home, History, Profile — visible on all screens except NFC Guide dialog
 - **`BoopNavHost`**: Maps routes to screen composables via Jetpack Navigation Compose
-- **Overlays**: NFC payload BottomSheet and error AlertDialog (transient, not navigation destinations)
+- **Overlays**: NFC payload BottomSheet, error AlertDialog, NFC/Wi-Fi disabled warning dialogs (transient, not navigation destinations)
 - **Auto-navigation**: `LaunchedEffect` observes `isTransferring` → navigates to TransferProgressScreen; NFC guide auto-shows on first NFC activation via SharedPreferences
 
 Routes are defined in `BoopRoute` sealed class: Home, History, Profile, TransferProgress, NfcGuide, Settings.
@@ -70,16 +71,19 @@ Routes are defined in `BoopRoute` sealed class: Home, History, Profile, Transfer
 | `nfc/BoopHceService` | HCE service responding to SELECT AID APDU with NDEF payload (AID: `F0426F6F7001`) |
 | `nfc/NfcReader` | NFC reader mode + foreground dispatch; parses NDEF → `ConnectionDetails` |
 | `wifi/WifiDirectManager` | Coroutine-friendly wrapper around `WifiP2pManager`; exposes `StateFlow<WifiDirectState>` |
-| `transfer/TransferManager` | Singleton with `sendFile()` / `receiveFile()` suspend functions; returns `Flow<TransferProgress>` |
-| `ui/viewmodels/TransferViewModel` | Owns full transfer pipeline; produces `TransferUiState` with recent transfers tracking |
-| `ui/viewmodels/SettingsViewModel` | SharedPreferences-backed settings (notifications, vibration, sound, location, display name, dark mode) |
-| `ui/navigation/BoopScaffold` | Top-level scaffold with bottom nav, overlays (payload sheet, error dialog), auto-navigation |
+| `transfer/TransferManager` | Singleton with `sendFile()` / `receiveFile()` suspend functions; returns `Flow<TransferProgress>` (includes `fileName`, `mimeType` on completion) |
+| `data/BoopDatabase` | Room database singleton (`boop_database`), holds `TransferHistoryEntity` |
+| `data/TransferHistoryDao` | Room DAO: `insert()`, `getAll()` (as Flow), `deleteOlderThan()` |
+| `data/TransferHistoryEntity` | Room entity for persisted transfer history records |
+| `ui/viewmodels/TransferViewModel` | Owns full transfer pipeline; produces `TransferUiState`; defaults to receive mode; `resetToReceive()` re-arms NFC after transfer; observes Room for history |
+| `ui/viewmodels/SettingsViewModel` | SharedPreferences-backed settings (notifications, vibration, sound, display name, dark mode) |
+| `ui/navigation/BoopScaffold` | Top-level scaffold with bottom nav, overlays (payload sheet, error dialog, NFC/Wi-Fi warning dialogs), auto-navigation with post-transfer reset to receive |
 | `ui/navigation/BoopNavHost` | NavHost mapping routes to screen composables |
 | `ui/navigation/BoopNavigation` | Route definitions (`BoopRoute` sealed class) |
-| `ui/screens/HomeScreen` | Header with NFC icon, pill-style mode toggle, "Ready to Boop?" display, concentric-circle CTA, recent boops |
+| `ui/screens/HomeScreen` | Header with NFC icon, pill-style mode toggle, "Ready to Boop?" display, concentric-circle CTA with pulsing wave animation, recent boops. "Boop it" opens file picker in send mode |
 | `ui/screens/TransferProgressScreen` | Full-screen transfer progress with percentage, progress bar, file card, cancel button |
 | `ui/screens/NfcGuideScreen` | Full-screen NFC antenna guide dialog with phone visualization and "Got it" dismiss |
-| `ui/screens/SettingsScreen` | Functional settings with toggles for notifications, vibration, sound, location, dark mode + editable display name |
+| `ui/screens/SettingsScreen` | Functional settings with toggles for notifications, vibration, sound, dark mode + editable display name |
 | `ui/screens/HistoryScreen` | Transfer history (last 30 days), tap to open file, share button to re-send via Boop |
 | `ui/screens/ProfileScreen` | Stub screen for Profile tab |
 | `ui/components/NfcAntennaGuide` | Canvas visualization of NFC antenna location using `getNfcAntennaInfo()` (API 34+) with fallback |
@@ -88,7 +92,7 @@ Routes are defined in `BoopRoute` sealed class: Home, History, Profile, Transfer
 | `ui/theme/Type` | Plus Jakarta Sans + Space Grotesk font families, `BoopTypography` |
 | `ui/theme/Theme` | `BoopTheme` composable, dark/light color schemes, `LocalBoopTokens` CompositionLocal |
 | `ui/models/LogEntry` | Data class for activity log entries |
-| `ui/models/RecentBoop` | Data class for recent transfer records (in-memory) |
+| `ui/models/RecentBoop` | Data class for recent transfer records (persisted via Room) |
 | `utils/PermissionUtils` | Version-aware runtime permission helpers (API 26–34 differences) |
 | `utils/FilePicker` | Compose wrapper around `OpenDocument` contract; resolves file metadata |
 | `utils/BoopHaptics` | Haptic feedback utility: `BoopHaptics` class (tick/click/heavy), `LocalHapticsEnabled` CompositionLocal |
@@ -120,6 +124,11 @@ Routes are defined in `BoopRoute` sealed class: Home, History, Profile, Transfer
 - **Android NFC classes are stubs in JVM unit tests** — use `NfcReader.parsePayloadJson()` for direct JSON parsing tests; `NdefMessage`/`NdefRecord` require Robolectric or instrumented tests
 - **`LinearProgressIndicator` API** — M3 1.2+ requires `progress` as a lambda `() -> Float`, not a bare Float
 - **`Icons.AutoMirrored`** — some icons moved to `Icons.AutoMirrored.Filled` in M3; use explicit imports from `automirrored.filled` package
+- **Default receive mode** — `TransferUiState` defaults to `isReceiveMode = true, isNfcReading = true`. The app starts ready to receive. NFC reader mode is auto-enabled via `LaunchedEffect(uiState.isNfcReading, permissionsGranted)` in `MainActivity`
+- **Successive transfers** — after transfer completion, `BoopScaffold` calls `onResetToReceive()` which invokes `TransferViewModel.resetToReceive()`, re-arming NFC reader mode for the next tap
+- **Bottom nav saveState/restoreState** — disabled when navigating from non-tab routes (e.g. Settings) to prevent stale state bugs
+- **NFC/Wi-Fi startup check** — `MainActivity.onCreate` and `onResume` check NFC/Wi-Fi enabled state, setting `nfcDisabledWarning`/`wifiDisabledWarning` on `TransferUiState`. `BoopScaffold` shows AlertDialogs with "Open Settings" actions
+- **Room schema export** — `exportSchema = false` on `BoopDatabase`; no schema JSON files generated
 
 ## Tests
 
@@ -128,7 +137,7 @@ JVM unit tests live in `app/src/test/kotlin/com/shashsam/boop/`. Run with `./gra
 | Test File | Coverage |
 |---|---|
 | `nfc/NfcReaderTest` | JSON payload parsing, APDU builder, edge cases (12 tests) |
-| `ui/viewmodels/TransferUiStateTest` | Idle defaults, mode transitions, progress, completion, error, logs, recent transfers (9 tests) |
+| `ui/viewmodels/TransferUiStateTest` | Default receive mode, mode transitions, progress, completion, error, logs, recent transfers (9 tests) |
 | `utils/FormattedSizeTest` | B/KB/MB/GB boundaries and values (8 tests) |
 | `ui/navigation/BoopRouteTest` | Route strings, uniqueness across all 6 routes (7 tests) |
 | `ui/viewmodels/SettingsUiStateTest` | Defaults, toggle copies, display name, dark mode, equality (7 tests) |
@@ -147,7 +156,7 @@ JVM unit tests live in `app/src/test/kotlin/com/shashsam/boop/`. Run with `./gra
 | NDEF JSON fields | `mac`, `port`, `ssid`, `token` |
 | Wi-Fi Direct GO IP | `192.168.49.1` |
 | TCP transfer port | `8765` |
-| Settings SharedPrefs | `boop_settings` (keys: notifications_enabled, vibration_enabled, sound_enabled, location_enabled, display_name, dark_mode_enabled) |
+| Settings SharedPrefs | `boop_settings` (keys: notifications_enabled, vibration_enabled, sound_enabled, display_name, dark_mode_enabled) |
 | NFC Guide SharedPrefs | `boop_prefs` / `nfc_antenna_guide_seen` |
 
 
