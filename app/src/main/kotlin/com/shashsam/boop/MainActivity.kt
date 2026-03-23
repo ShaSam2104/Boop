@@ -1,6 +1,7 @@
 package com.shashsam.boop
 
 import android.content.Intent
+import android.net.wifi.WifiManager
 import android.nfc.NfcAdapter
 import android.os.Bundle
 import android.util.Log
@@ -48,9 +49,16 @@ class MainActivity : ComponentActivity() {
         } else if (!nfcReader.isEnabled) {
             Log.w(TAG, "NFC is disabled")
             viewModel.appendLog("⚠️ NFC is disabled. Enable it in Settings for full functionality.")
+            viewModel.setNfcWarning(true)
         } else {
             Log.d(TAG, "NFC adapter ready")
             viewModel.appendLog("📡 NFC adapter ready.")
+        }
+
+        val wifiManager = applicationContext.getSystemService(WIFI_SERVICE) as? WifiManager
+        if (wifiManager != null && !wifiManager.isWifiEnabled) {
+            Log.w(TAG, "Wi-Fi is disabled")
+            viewModel.setWifiWarning(true)
         }
 
         enableEdgeToEdge()
@@ -119,6 +127,13 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
+                    // ── Auto-enable NFC reader mode reactively ──────────────
+                    LaunchedEffect(uiState.isNfcReading, permissionsGranted) {
+                        if (uiState.isNfcReading && permissionsGranted) {
+                            nfcReader.enableReaderMode(this@MainActivity)
+                        }
+                    }
+
                     BoopScaffold(
                         transferUiState = uiState,
                         settingsState = settingsState,
@@ -132,7 +147,9 @@ class MainActivity : ComponentActivity() {
                                 )
                                 permissionLauncher.launch(requiredPermissions())
                             } else {
-                                viewModel.prepareSend()
+                                if (!viewModel.uiState.value.isSendMode) {
+                                    viewModel.prepareSend()
+                                }
                                 filePicker.launch(arrayOf("*/*"))
                             }
                         },
@@ -146,12 +163,15 @@ class MainActivity : ComponentActivity() {
                                 permissionLauncher.launch(requiredPermissions())
                             } else {
                                 viewModel.prepareReceive()
-                                nfcReader.enableReaderMode(this@MainActivity)
                             }
                         },
                         onResetClick = {
                             Log.d(TAG, "onResetClick")
                             viewModel.reset()
+                        },
+                        onResetToReceive = {
+                            Log.d(TAG, "onResetToReceive")
+                            viewModel.resetToReceive()
                         },
                         onResendBoop = { boop ->
                             Log.d(TAG, "onResendBoop: ${boop.fileName} uri=${boop.fileUri}")
@@ -166,8 +186,13 @@ class MainActivity : ComponentActivity() {
                         onDismissError = {
                             viewModel.dismissError()
                         },
+                        onDismissNfcWarning = {
+                            viewModel.dismissNfcWarning()
+                        },
+                        onDismissWifiWarning = {
+                            viewModel.dismissWifiWarning()
+                        },
                         onNotificationsToggle = settingsViewModel::setNotificationsEnabled,
-                        onLocationToggle = settingsViewModel::setLocationEnabled,
                         onVibrationToggle = settingsViewModel::setVibrationEnabled,
                         onSoundToggle = settingsViewModel::setSoundEnabled,
                         onDisplayNameChange = settingsViewModel::setDisplayName,
@@ -183,6 +208,15 @@ class MainActivity : ComponentActivity() {
         Log.d(TAG, "onResume")
         viewModel.wifiDirectManager.register()
         nfcReader.enableForegroundDispatch(this)
+
+        // Re-check NFC/Wi-Fi state on resume (user may have toggled in system settings)
+        if (nfcReader.isAvailable) {
+            viewModel.setNfcWarning(!nfcReader.isEnabled)
+        }
+        val wifiManager = applicationContext.getSystemService(WIFI_SERVICE) as? WifiManager
+        if (wifiManager != null) {
+            viewModel.setWifiWarning(!wifiManager.isWifiEnabled)
+        }
     }
 
     override fun onPause() {

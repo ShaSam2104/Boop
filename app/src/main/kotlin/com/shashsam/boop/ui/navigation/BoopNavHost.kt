@@ -33,7 +33,6 @@ fun BoopNavHost(
     onResetClick: () -> Unit,
     onResendBoop: (com.shashsam.boop.ui.models.RecentBoop) -> Unit,
     onNotificationsToggle: (Boolean) -> Unit,
-    onLocationToggle: (Boolean) -> Unit,
     onVibrationToggle: (Boolean) -> Unit,
     onSoundToggle: (Boolean) -> Unit,
     onDisplayNameChange: (String) -> Unit,
@@ -98,7 +97,6 @@ fun BoopNavHost(
                     navController.popBackStack()
                 },
                 onNotificationsToggle = onNotificationsToggle,
-                onLocationToggle = onLocationToggle,
                 onVibrationToggle = onVibrationToggle,
                 onSoundToggle = onSoundToggle,
                 onDisplayNameChange = onDisplayNameChange,
