@@ -42,7 +42,9 @@ data class TransferProgress(
     val savedUri: Uri? = null,
     val error: String? = null,
     val fileName: String? = null,
-    val mimeType: String? = null
+    val mimeType: String? = null,
+    val fileIndex: Int = 0,
+    val totalFiles: Int = 1
 ) {
     /**
      * Transfer progress as a fraction in the range [0, 1].
@@ -120,7 +122,7 @@ object TransferManager {
                 context.contentResolver.openInputStream(fileUri)?.use { inputStream ->
                     streamBytes(
                         source = inputStream,
-                        destination = clientSocket.getOutputStream(),
+                        destination = dataOut,
                         totalSize = header.size
                     ) { transferred ->
                         send(TransferProgress(transferred, header.size))
@@ -172,7 +174,7 @@ object TransferManager {
 
                 context.contentResolver.openOutputStream(outputUri)?.use { outputStream ->
                     streamBytes(
-                        source = socket.getInputStream(),
+                        source = dataIn,
                         destination = outputStream,
                         totalSize = header.size
                     ) { transferred ->
@@ -197,6 +199,127 @@ object TransferManager {
             } finally {
                 runCatching { socket?.close() }
                 Log.d(TAG, "receiveFile cleanup done")
+            }
+        }
+    }
+
+    /**
+     * **Sender side** — sends multiple files over a single TCP connection.
+     * Wire format: `[4 bytes fileCount] + [per-file: header + bytes]...`
+     */
+    fun sendFiles(context: Context, fileUris: List<Uri>, port: Int): Flow<TransferProgress> = channelFlow {
+        Log.d(TAG, "sendFiles: ${fileUris.size} files, port=$port")
+        val totalFiles = fileUris.size
+        withContext(Dispatchers.IO) {
+            var serverSocket: ServerSocket? = null
+            var clientSocket: Socket? = null
+            try {
+                serverSocket = ServerSocket(port).apply { soTimeout = SERVER_ACCEPT_TIMEOUT_MS }
+                Log.d(TAG, "Listening on port $port for multi-file transfer")
+                send(TransferProgress(totalFiles = totalFiles))
+
+                clientSocket = serverSocket.accept()
+                Log.d(TAG, "Client connected: ${clientSocket.inetAddress.hostAddress}")
+
+                val dataOut = DataOutputStream(clientSocket.getOutputStream().buffered())
+                dataOut.writeInt(totalFiles)
+                dataOut.flush()
+
+                for ((index, fileUri) in fileUris.withIndex()) {
+                    val header = resolveFileHeader(context, fileUri)
+                        ?: throw IllegalArgumentException("Cannot resolve file metadata for: $fileUri")
+                    Log.d(TAG, "Sending file ${index + 1}/$totalFiles — name=${header.name} size=${header.size}")
+
+                    writeHeader(dataOut, header)
+                    context.contentResolver.openInputStream(fileUri)?.use { inputStream ->
+                        streamBytes(
+                            source = inputStream,
+                            destination = dataOut,
+                            totalSize = header.size
+                        ) { transferred ->
+                            send(TransferProgress(transferred, header.size, fileIndex = index, totalFiles = totalFiles))
+                        }
+                        dataOut.flush()
+                    } ?: throw IllegalStateException("Cannot open InputStream for: $fileUri")
+
+                    // Emit per-file completion (not overall completion until last file)
+                    if (index == totalFiles - 1) {
+                        send(TransferProgress(header.size, header.size, isComplete = true, fileName = header.name, mimeType = header.mimeType, fileIndex = index, totalFiles = totalFiles))
+                    } else {
+                        send(TransferProgress(header.size, header.size, fileName = header.name, mimeType = header.mimeType, fileIndex = index, totalFiles = totalFiles))
+                    }
+                }
+                Log.d(TAG, "All $totalFiles files sent")
+            } catch (e: Exception) {
+                Log.e(TAG, "sendFiles error", e)
+                send(TransferProgress(error = e.message ?: "Multi-file send failed"))
+            } finally {
+                runCatching { clientSocket?.close() }
+                runCatching { serverSocket?.close() }
+                Log.d(TAG, "sendFiles cleanup done")
+            }
+        }
+    }
+
+    /**
+     * **Receiver side** — receives multiple files over a single TCP connection.
+     * Expects wire format: `[4 bytes fileCount] + [per-file: header + bytes]...`
+     */
+    fun receiveFiles(
+        context: Context,
+        groupOwnerAddress: String,
+        port: Int
+    ): Flow<TransferProgress> = channelFlow {
+        Log.d(TAG, "receiveFiles: host=$groupOwnerAddress port=$port")
+        withContext(Dispatchers.IO) {
+            var socket: Socket? = null
+            try {
+                socket = Socket(groupOwnerAddress, port)
+                Log.d(TAG, "Connected to $groupOwnerAddress:$port")
+
+                val dataIn = DataInputStream(socket.getInputStream().buffered())
+                val totalFiles = dataIn.readInt()
+                Log.d(TAG, "Expecting $totalFiles files")
+                send(TransferProgress(totalFiles = totalFiles))
+
+                for (index in 0 until totalFiles) {
+                    val header = readHeader(dataIn)
+                    Log.d(TAG, "Receiving file ${index + 1}/$totalFiles — name=${header.name} size=${header.size}")
+
+                    val outputUri = insertMediaStoreEntry(context, header)
+                        ?: throw IllegalStateException("Failed to create MediaStore entry for: ${header.name}")
+
+                    context.contentResolver.openOutputStream(outputUri)?.use { outputStream ->
+                        streamBytes(
+                            source = dataIn,
+                            destination = outputStream,
+                            totalSize = header.size
+                        ) { transferred ->
+                            send(TransferProgress(transferred, header.size, fileIndex = index, totalFiles = totalFiles))
+                        }
+
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                            context.contentResolver.update(
+                                outputUri,
+                                ContentValues().apply { put(MediaStore.Downloads.IS_PENDING, 0) },
+                                null, null
+                            )
+                        }
+                    } ?: throw IllegalStateException("Cannot open OutputStream for: $outputUri")
+
+                    if (index == totalFiles - 1) {
+                        send(TransferProgress(header.size, header.size, isComplete = true, savedUri = outputUri, fileName = header.name, mimeType = header.mimeType, fileIndex = index, totalFiles = totalFiles))
+                    } else {
+                        send(TransferProgress(header.size, header.size, savedUri = outputUri, fileName = header.name, mimeType = header.mimeType, fileIndex = index, totalFiles = totalFiles))
+                    }
+                }
+                Log.d(TAG, "All $totalFiles files received")
+            } catch (e: Exception) {
+                Log.e(TAG, "receiveFiles error", e)
+                send(TransferProgress(error = e.message ?: "Multi-file receive failed"))
+            } finally {
+                runCatching { socket?.close() }
+                Log.d(TAG, "receiveFiles cleanup done")
             }
         }
     }
@@ -244,8 +367,10 @@ object TransferManager {
     ): Long {
         val buffer = ByteArray(CHUNK_SIZE)
         var bytesTransferred = 0L
-        var read: Int
-        while (source.read(buffer).also { read = it } != -1) {
+        while (bytesTransferred < totalSize) {
+            val toRead = minOf(CHUNK_SIZE.toLong(), totalSize - bytesTransferred).toInt()
+            val read = source.read(buffer, 0, toRead)
+            if (read == -1) break
             destination.write(buffer, 0, read)
             bytesTransferred += read
             onProgress(bytesTransferred)

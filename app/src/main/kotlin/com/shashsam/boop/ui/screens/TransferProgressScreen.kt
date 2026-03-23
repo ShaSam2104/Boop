@@ -213,6 +213,17 @@ fun TransferProgressScreen(
                 .padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            // Multi-file counter
+            if (transferUiState.totalFiles > 1) {
+                Text(
+                    text = "File ${transferUiState.currentFileIndex + 1} of ${transferUiState.totalFiles}",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.ExtraBold,
+                    letterSpacing = 1.sp,
+                    color = BoopBlack.copy(alpha = 0.7f)
+                )
+            }
+
             // File info row
             Row(
                 modifier = Modifier.fillMaxWidth(),

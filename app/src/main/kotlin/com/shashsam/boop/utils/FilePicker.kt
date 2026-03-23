@@ -76,6 +76,31 @@ fun rememberFilePicker(
 }
 
 /**
+ * Compose helper that creates an [ActivityResultContracts.OpenMultipleDocuments] launcher
+ * for picking multiple files at once.
+ *
+ * @param onResult Callback invoked with a list of [FileMetadata], or empty if cancelled.
+ */
+@Composable
+fun rememberMultiFilePicker(
+    onResult: (List<FileMetadata>) -> Unit
+): ManagedActivityResultLauncher<Array<String>, List<Uri>> {
+    val context = LocalContext.current
+    return rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenMultipleDocuments()
+    ) { uris ->
+        if (uris.isNotEmpty()) {
+            Log.d(TAG, "Multi-file picked: ${uris.size} files")
+            val metadataList = uris.mapNotNull { resolveFileMetadata(context, it) }
+            onResult(metadataList)
+        } else {
+            Log.d(TAG, "Multi-file picker cancelled")
+            onResult(emptyList())
+        }
+    }
+}
+
+/**
  * Resolves [FileMetadata] for [uri] using the [android.content.ContentResolver].
  *
  * @return [FileMetadata] on success, `null` if the query fails or returns no rows.
