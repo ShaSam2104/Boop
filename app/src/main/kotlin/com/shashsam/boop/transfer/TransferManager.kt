@@ -40,7 +40,9 @@ data class TransferProgress(
     val totalBytes: Long = 0L,
     val isComplete: Boolean = false,
     val savedUri: Uri? = null,
-    val error: String? = null
+    val error: String? = null,
+    val fileName: String? = null,
+    val mimeType: String? = null
 ) {
     /**
      * Transfer progress as a fraction in the range [0, 1].
@@ -125,7 +127,7 @@ object TransferManager {
                     }
                     dataOut.flush()
                     Log.d(TAG, "File sent: ${header.size} bytes")
-                    send(TransferProgress(header.size, header.size, isComplete = true))
+                    send(TransferProgress(header.size, header.size, isComplete = true, fileName = header.name, mimeType = header.mimeType))
                 } ?: throw IllegalStateException("Cannot open InputStream for: $fileUri")
 
             } catch (e: Exception) {
@@ -186,7 +188,7 @@ object TransferManager {
                         )
                     }
                     Log.d(TAG, "File received: ${header.size} bytes → $outputUri")
-                    send(TransferProgress(header.size, header.size, isComplete = true, savedUri = outputUri))
+                    send(TransferProgress(header.size, header.size, isComplete = true, savedUri = outputUri, fileName = header.name, mimeType = header.mimeType))
                 } ?: throw IllegalStateException("Cannot open OutputStream for: $outputUri")
 
             } catch (e: Exception) {
