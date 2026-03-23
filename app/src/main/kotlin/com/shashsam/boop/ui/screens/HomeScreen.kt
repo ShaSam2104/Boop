@@ -3,6 +3,12 @@ package com.shashsam.boop.ui.screens
 import android.content.Intent
 import android.net.Uri
 import android.util.Log
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -319,6 +325,24 @@ private fun ConcentricCircleCta(
     val outerRingColor = tokens.concentricOuter
     val innerRingColor = tokens.concentricInner
 
+    // Pulsing wave animations (only when a mode is active)
+    val infiniteTransition = rememberInfiniteTransition(label = "boopWave")
+    val wave1 = infiniteTransition.animateFloat(
+        0f, 1f,
+        infiniteRepeatable(tween(2000, easing = LinearEasing), RepeatMode.Restart),
+        label = "w1"
+    )
+    val wave2 = infiniteTransition.animateFloat(
+        0f, 1f,
+        infiniteRepeatable(tween(2000, delayMillis = 667, easing = LinearEasing), RepeatMode.Restart),
+        label = "w2"
+    )
+    val wave3 = infiniteTransition.animateFloat(
+        0f, 1f,
+        infiniteRepeatable(tween(2000, delayMillis = 1333, easing = LinearEasing), RepeatMode.Restart),
+        label = "w3"
+    )
+
     Box(
         modifier = modifier
             .fillMaxWidth()
@@ -359,6 +383,22 @@ private fun ConcentricCircleCta(
                     radius = innerRingRadius,
                     center = Offset(centerX, centerY)
                 )
+
+                // Pulsing yellow wave rings when active
+                if (isActive) {
+                    val buttonRadiusPx = 90.dp.toPx()
+                    val maxWaveRadius = dashedRadius
+                    listOf(wave1.value, wave2.value, wave3.value).forEach { progress ->
+                        val waveRadius = buttonRadiusPx + (maxWaveRadius - buttonRadiusPx) * progress
+                        val waveAlpha = (1f - progress) * 0.4f
+                        drawCircle(
+                            color = BoopAccentYellow.copy(alpha = waveAlpha),
+                            radius = waveRadius,
+                            center = Offset(centerX, centerY),
+                            style = Stroke(width = 2.dp.toPx())
+                        )
+                    }
+                }
             },
         contentAlignment = Alignment.Center
     ) {
@@ -384,8 +424,10 @@ private fun ConcentricCircleCta(
                 .clickable(enabled = permissionsGranted) {
                     Log.d(TAG, "BOOP IT clicked — sendMode=$isSendMode receiveMode=$isReceiveMode")
                     haptics.heavy()
-                    if (!isSendMode && !isReceiveMode) {
-                        onSendClick()
+                    when {
+                        isSendMode -> onSendClick()
+                        isReceiveMode -> { /* NFC listening, no-op */ }
+                        else -> onSendClick()
                     }
                 },
             contentAlignment = Alignment.Center
