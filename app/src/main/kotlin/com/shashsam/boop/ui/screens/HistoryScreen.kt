@@ -4,6 +4,7 @@ import android.content.Intent
 import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,6 +18,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CloudDownload
@@ -24,11 +26,17 @@ import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.InsertDriveFile
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.outlined.History
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -53,6 +61,30 @@ import java.util.concurrent.TimeUnit
 private const val TAG = "HistoryScreen"
 private const val THIRTY_DAYS_MS = 30L * 24 * 60 * 60 * 1000
 
+private enum class DirectionFilter(val label: String) {
+    ALL("All"), SENT("Sent"), RECEIVED("Received")
+}
+
+private enum class FileTypeFilter(val label: String) {
+    ALL("All"), IMAGES("Images"), VIDEOS("Videos"), DOCUMENTS("Docs"), OTHER("Other")
+}
+
+/** Matches a MIME type to a [FileTypeFilter]. */
+private fun classifyMimeType(mimeType: String): FileTypeFilter = when {
+    mimeType.startsWith("image/") -> FileTypeFilter.IMAGES
+    mimeType.startsWith("video/") -> FileTypeFilter.VIDEOS
+    mimeType.startsWith("text/") || mimeType in setOf(
+        "application/pdf",
+        "application/msword",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "application/vnd.ms-excel",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "application/vnd.ms-powerpoint",
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+    ) -> FileTypeFilter.DOCUMENTS
+    else -> FileTypeFilter.OTHER
+}
+
 @Composable
 fun HistoryScreen(
     recentTransfers: List<RecentBoop>,
@@ -66,6 +98,22 @@ fun HistoryScreen(
     val now = System.currentTimeMillis()
     val last30Days = recentTransfers.filter { now - it.timestamp < THIRTY_DAYS_MS }
         .sortedByDescending { it.timestamp }
+
+    var directionFilter by remember { mutableStateOf(DirectionFilter.ALL) }
+    var fileTypeFilter by remember { mutableStateOf(FileTypeFilter.ALL) }
+
+    val filteredList = last30Days.filter { boop ->
+        val dirMatch = when (directionFilter) {
+            DirectionFilter.ALL -> true
+            DirectionFilter.SENT -> boop.wasSender
+            DirectionFilter.RECEIVED -> !boop.wasSender
+        }
+        val typeMatch = when (fileTypeFilter) {
+            FileTypeFilter.ALL -> true
+            else -> classifyMimeType(boop.mimeType) == fileTypeFilter
+        }
+        dirMatch && typeMatch
+    }
 
     Column(
         modifier = modifier
@@ -91,9 +139,81 @@ fun HistoryScreen(
             color = tokens.textSecondary
         )
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(12.dp))
 
-        if (last30Days.isEmpty()) {
+        // ── Direction filter chips ──────────────────────────────────────────
+        Text(
+            text = "Direction",
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.Bold,
+            color = tokens.textSecondary
+        )
+
+        Spacer(modifier = Modifier.height(4.dp))
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            DirectionFilter.entries.forEach { filter ->
+                FilterChip(
+                    selected = directionFilter == filter,
+                    onClick = { directionFilter = filter },
+                    label = {
+                        Text(
+                            text = filter.label,
+                            fontWeight = if (directionFilter == filter) FontWeight.Bold else FontWeight.Normal
+                        )
+                    },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = MaterialTheme.colorScheme.primary,
+                        selectedLabelColor = MaterialTheme.colorScheme.onPrimary
+                    )
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // ── File type filter chips ──────────────────────────────────────────
+        Text(
+            text = "File Type",
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.Bold,
+            color = tokens.textSecondary
+        )
+
+        Spacer(modifier = Modifier.height(4.dp))
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            FileTypeFilter.entries.forEach { filter ->
+                FilterChip(
+                    selected = fileTypeFilter == filter,
+                    onClick = { fileTypeFilter = filter },
+                    label = {
+                        Text(
+                            text = filter.label,
+                            fontWeight = if (fileTypeFilter == filter) FontWeight.Bold else FontWeight.Normal
+                        )
+                    },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = MaterialTheme.colorScheme.primary,
+                        selectedLabelColor = MaterialTheme.colorScheme.onPrimary
+                    )
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        if (filteredList.isEmpty()) {
             // ── Empty state ────────────────────────────────────────────────
             Column(
                 modifier = Modifier
@@ -128,7 +248,7 @@ fun HistoryScreen(
             LazyColumn(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                items(last30Days, key = { "${it.timestamp}_${it.fileName}" }) { boop ->
+                items(filteredList, key = { "${it.timestamp}_${it.fileName}" }) { boop ->
                     HistoryItem(
                         boop = boop,
                         onOpen = {

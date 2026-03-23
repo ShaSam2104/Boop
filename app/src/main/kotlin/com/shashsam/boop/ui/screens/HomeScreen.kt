@@ -32,6 +32,7 @@ import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Contactless
 import androidx.compose.material.icons.filled.InsertDriveFile
+import androidx.compose.material.icons.filled.LocalCafe
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -40,14 +41,13 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.PathEffect
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -82,15 +82,16 @@ fun HomeScreen(
     permissionsGranted: Boolean,
     transferUiState: TransferUiState,
     onSendClick: () -> Unit,
-    onReceiveClick: () -> Unit,
     onResetClick: () -> Unit,
     onSettingsClick: () -> Unit = {},
     onNfcGuideClick: () -> Unit = {},
+    onViewAllClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     Log.d(TAG, "HomeScreen recompose — permissionsGranted=$permissionsGranted")
     val tokens = LocalBoopTokens.current
     val haptics = rememberBoopHaptics()
+    val context = LocalContext.current
 
     Column(
         modifier = modifier
@@ -122,27 +123,32 @@ fun HomeScreen(
                     color = MaterialTheme.colorScheme.onBackground
                 )
             }
-            IconButton(onClick = onSettingsClick) {
-                Icon(
-                    imageVector = Icons.Filled.Settings,
-                    contentDescription = "Settings",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(28.dp)
-                )
+            Row {
+                IconButton(onClick = {
+                    try {
+                        val upiUri = Uri.parse("upi://pay?pa=03.shubhamshah-1@oksbi&pn=Boop&tn=Buy%20me%20a%20Chai&cu=INR")
+                        context.startActivity(Intent(Intent.ACTION_VIEW, upiUri))
+                    } catch (e: Exception) {
+                        Log.w(TAG, "No UPI app available", e)
+                    }
+                }) {
+                    Icon(
+                        imageVector = Icons.Filled.LocalCafe,
+                        contentDescription = "Buy me a Chai",
+                        tint = tokens.accent,
+                        modifier = Modifier.size(26.dp)
+                    )
+                }
+                IconButton(onClick = onSettingsClick) {
+                    Icon(
+                        imageVector = Icons.Filled.Settings,
+                        contentDescription = "Settings",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(28.dp)
+                    )
+                }
             }
         }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // ── Mode selector (pill toggle) ────────────────────────────────────
-        ModeSelectorPill(
-            isSendMode = transferUiState.isSendMode,
-            isReceiveMode = transferUiState.isReceiveMode,
-            isTransferring = transferUiState.isTransferring,
-            enabled = permissionsGranted,
-            onSendClick = onSendClick,
-            onReceiveClick = onReceiveClick
-        )
 
         Spacer(modifier = Modifier.height(24.dp))
 
@@ -178,18 +184,15 @@ fun HomeScreen(
         // ── Concentric circles CTA ─────────────────────────────────────────
         ConcentricCircleCta(
             permissionsGranted = permissionsGranted,
-            isSendMode = transferUiState.isSendMode,
-            isReceiveMode = transferUiState.isReceiveMode,
             isTransferring = transferUiState.isTransferring,
-            onSendClick = onSendClick,
-            onReceiveClick = onReceiveClick
+            onSendClick = onSendClick
         )
 
         Spacer(modifier = Modifier.height(16.dp))
 
         // ── Instruction text ───────────────────────────────────────────────
         Text(
-            text = "Hold your device near\nanother phone to share",
+            text = "Tap to send files, or\nhold near another phone to receive",
             style = MaterialTheme.typography.bodyLarge,
             color = tokens.textSecondary,
             textAlign = TextAlign.Center,
@@ -200,9 +203,9 @@ fun HomeScreen(
 
         // ── Recent Boops ───────────────────────────────────────────────────
         if (transferUiState.recentTransfers.isNotEmpty()) {
-            val context = LocalContext.current
             RecentBoopsSection(
                 recentTransfers = transferUiState.recentTransfers,
+                onViewAllClick = onViewAllClick,
                 onBoopClick = { boop ->
                     boop.fileUri?.let { uri ->
                         Log.d(TAG, "Opening file: ${boop.fileName} uri=$uri")
@@ -224,180 +227,117 @@ fun HomeScreen(
     }
 }
 
-// ─── Mode Selector Pill ────────────────────────────────────────────────────
+// ─── Morphing Aurora Blob CTA ──────────────────────────────────────────────
 
-@Composable
-private fun ModeSelectorPill(
-    isSendMode: Boolean,
-    isReceiveMode: Boolean,
-    isTransferring: Boolean,
-    enabled: Boolean,
-    onSendClick: () -> Unit,
-    onReceiveClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val tokens = LocalBoopTokens.current
-    val haptics = rememberBoopHaptics()
-    val isActionable = enabled && !isTransferring
-    val containerColor = tokens.pillContainer
-    val activeColor = tokens.pillActive
+private const val BLOB_POINTS = 8
+private const val TWO_PI = (2 * Math.PI).toFloat()
 
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .background(containerColor)
-            .padding(4.dp),
-        horizontalArrangement = Arrangement.spacedBy(0.dp)
-    ) {
-        // Send pill
-        Box(
-            modifier = Modifier
-                .weight(1f)
-                .clip(RoundedCornerShape(12.dp))
-                .then(
-                    if (isSendMode) Modifier.background(activeColor)
-                    else Modifier
-                )
-                .clickable(enabled = isActionable) {
-                    Log.d(TAG, "Send mode clicked")
-                    haptics.click()
-                    onSendClick()
-                }
-                .padding(vertical = 12.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                text = if (isSendMode && isTransferring) "Sending..." else "Send Mode",
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = if (isSendMode) FontWeight.Bold else FontWeight.Medium,
-                color = if (isSendMode) MaterialTheme.colorScheme.onBackground
-                else MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-
-        // Receive pill
-        Box(
-            modifier = Modifier
-                .weight(1f)
-                .clip(RoundedCornerShape(12.dp))
-                .then(
-                    if (isReceiveMode) Modifier.background(activeColor)
-                    else Modifier
-                )
-                .clickable(enabled = isActionable) {
-                    Log.d(TAG, "Receive mode clicked")
-                    haptics.click()
-                    onReceiveClick()
-                }
-                .padding(vertical = 12.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                text = if (isReceiveMode && !isTransferring) "Receive Mode" else "Receive Mode",
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = if (isReceiveMode) FontWeight.Bold else FontWeight.Medium,
-                color = if (isReceiveMode) MaterialTheme.colorScheme.onBackground
-                else MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-    }
-}
-
-// ─── Concentric Circle CTA ─────────────────────────────────────────────────
-
+/**
+ * Morphing aurora blob CTA — replaces the concentric circle CTA.
+ * 8 control points on a base circle, displaced by animated sine waves at different
+ * frequencies/phases. Points connected via cubic Bezier curves. Filled with a
+ * rotating sweep gradient (purple <-> yellow). When active, amplitudes increase
+ * and animation speeds up.
+ */
 @Composable
 private fun ConcentricCircleCta(
     permissionsGranted: Boolean,
-    isSendMode: Boolean,
-    isReceiveMode: Boolean,
     isTransferring: Boolean,
     onSendClick: () -> Unit,
-    onReceiveClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val tokens = LocalBoopTokens.current
     val haptics = rememberBoopHaptics()
-    val isActive = isSendMode || isReceiveMode
+    val isActive = true
 
-    // Concentric circle colors from tokens
-    val dashedRingColor = tokens.concentricDashed
-    val outerRingColor = tokens.concentricOuter
-    val innerRingColor = tokens.concentricInner
+    val infiniteTransition = rememberInfiniteTransition(label = "auroraBlob")
 
-    // Pulsing wave animations (only when a mode is active)
-    val infiniteTransition = rememberInfiniteTransition(label = "boopWave")
-    val wave1 = infiniteTransition.animateFloat(
-        0f, 1f,
-        infiniteRepeatable(tween(2000, easing = LinearEasing), RepeatMode.Restart),
-        label = "w1"
+    // 5 animators at different speeds for organic variation
+    val t1 = infiniteTransition.animateFloat(
+        0f, TWO_PI,
+        infiniteRepeatable(tween(if (isActive) 3000 else 5000, easing = LinearEasing), RepeatMode.Restart),
+        label = "t1"
     )
-    val wave2 = infiniteTransition.animateFloat(
-        0f, 1f,
-        infiniteRepeatable(tween(2000, delayMillis = 667, easing = LinearEasing), RepeatMode.Restart),
-        label = "w2"
+    val t2 = infiniteTransition.animateFloat(
+        0f, TWO_PI,
+        infiniteRepeatable(tween(if (isActive) 3800 else 6000, easing = LinearEasing), RepeatMode.Restart),
+        label = "t2"
     )
-    val wave3 = infiniteTransition.animateFloat(
-        0f, 1f,
-        infiniteRepeatable(tween(2000, delayMillis = 1333, easing = LinearEasing), RepeatMode.Restart),
-        label = "w3"
+    val t3 = infiniteTransition.animateFloat(
+        0f, TWO_PI,
+        infiniteRepeatable(tween(if (isActive) 4500 else 5500, easing = LinearEasing), RepeatMode.Restart),
+        label = "t3"
     )
+    val t4 = infiniteTransition.animateFloat(
+        0f, TWO_PI,
+        infiniteRepeatable(tween(if (isActive) 3500 else 4800, easing = LinearEasing), RepeatMode.Restart),
+        label = "t4"
+    )
+    // Gradient rotation
+    val gradientRotation = infiniteTransition.animateFloat(
+        0f, 360f,
+        infiniteRepeatable(tween(8000, easing = LinearEasing), RepeatMode.Restart),
+        label = "gradRot"
+    )
+
+    val amplitudeFactor = if (isActive) 1.0f else 0.5f
+    val purpleColor = Color(0xFF736DEE)
+    val yellowColor = BoopAccentYellow
 
     Box(
         modifier = modifier
             .fillMaxWidth()
             .height(280.dp)
-            // Draw the dashed outer ring
             .drawBehind {
-                val centerX = size.width / 2
-                val centerY = size.height / 2
-                val dashedRadius = minOf(size.width, size.height) / 2 - 4.dp.toPx()
+                val cx = size.width / 2
+                val cy = size.height / 2
+                val baseRadius = minOf(size.width, size.height) / 2 - 20.dp.toPx()
 
-                // Dashed outer circle
-                drawCircle(
-                    color = dashedRingColor,
-                    radius = dashedRadius,
-                    center = Offset(centerX, centerY),
-                    style = Stroke(
-                        width = 1.5.dp.toPx(),
-                        pathEffect = PathEffect.dashPathEffect(
-                            floatArrayOf(8.dp.toPx(), 6.dp.toPx()),
-                            0f
-                        ),
-                        cap = StrokeCap.Round
-                    )
+                // Secondary larger transparent glow blob
+                val glowPath = buildBlobPath(
+                    cx, cy,
+                    baseRadius = baseRadius * 1.15f,
+                    amplitudes = floatArrayOf(12f, 8f, 10f, 6f, 9f, 11f, 7f, 13f),
+                    phases = floatArrayOf(0.3f, 1.2f, 2.1f, 0.8f, 1.7f, 2.5f, 0.5f, 1.9f),
+                    t1 = t1.value, t2 = t2.value, t3 = t3.value, t4 = t4.value,
+                    amplitudeFactor = amplitudeFactor * 0.7f
                 )
-
-                // Dark solid ring
-                val solidRingRadius = dashedRadius - 16.dp.toPx()
-                drawCircle(
-                    color = outerRingColor,
-                    radius = solidRingRadius,
-                    center = Offset(centerX, centerY)
-                )
-
-                // Inner darker ring
-                val innerRingRadius = solidRingRadius - 8.dp.toPx()
-                drawCircle(
-                    color = innerRingColor,
-                    radius = innerRingRadius,
-                    center = Offset(centerX, centerY)
-                )
-
-                // Pulsing yellow wave rings when active
-                if (isActive) {
-                    val buttonRadiusPx = 90.dp.toPx()
-                    val maxWaveRadius = dashedRadius
-                    listOf(wave1.value, wave2.value, wave3.value).forEach { progress ->
-                        val waveRadius = buttonRadiusPx + (maxWaveRadius - buttonRadiusPx) * progress
-                        val waveAlpha = (1f - progress) * 0.4f
-                        drawCircle(
-                            color = BoopAccentYellow.copy(alpha = waveAlpha),
-                            radius = waveRadius,
-                            center = Offset(centerX, centerY),
-                            style = Stroke(width = 2.dp.toPx())
+                rotate(gradientRotation.value * 0.7f) {
+                    drawPath(
+                        glowPath,
+                        Brush.sweepGradient(
+                            colors = listOf(
+                                purpleColor.copy(alpha = 0.08f),
+                                yellowColor.copy(alpha = 0.06f),
+                                purpleColor.copy(alpha = 0.08f)
+                            ),
+                            center = Offset(cx, cy)
                         )
-                    }
+                    )
+                }
+
+                // Primary blob
+                val blobPath = buildBlobPath(
+                    cx, cy,
+                    baseRadius = baseRadius,
+                    amplitudes = floatArrayOf(15f, 10f, 18f, 8f, 14f, 12f, 16f, 9f),
+                    phases = floatArrayOf(0f, 0.8f, 1.5f, 2.3f, 0.4f, 1.1f, 2.0f, 2.8f),
+                    t1 = t1.value, t2 = t2.value, t3 = t3.value, t4 = t4.value,
+                    amplitudeFactor = amplitudeFactor
+                )
+                rotate(gradientRotation.value) {
+                    drawPath(
+                        blobPath,
+                        Brush.sweepGradient(
+                            colors = listOf(
+                                purpleColor.copy(alpha = 0.25f),
+                                yellowColor.copy(alpha = 0.15f),
+                                purpleColor.copy(alpha = 0.20f),
+                                yellowColor.copy(alpha = 0.18f),
+                                purpleColor.copy(alpha = 0.25f)
+                            ),
+                            center = Offset(cx, cy)
+                        )
+                    )
                 }
             },
         contentAlignment = Alignment.Center
@@ -421,14 +361,10 @@ private fun ConcentricCircleCta(
                     color = Color.White.copy(alpha = 0.3f),
                     shape = CircleShape
                 )
-                .clickable(enabled = permissionsGranted) {
-                    Log.d(TAG, "BOOP IT clicked — sendMode=$isSendMode receiveMode=$isReceiveMode")
+                .clickable(enabled = permissionsGranted && !isTransferring) {
+                    Log.d(TAG, "BOOP IT clicked — opening file picker")
                     haptics.heavy()
-                    when {
-                        isSendMode -> onSendClick()
-                        isReceiveMode -> { /* NFC listening, no-op */ }
-                        else -> onSendClick()
-                    }
+                    onSendClick()
                 },
             contentAlignment = Alignment.Center
         ) {
@@ -457,11 +393,60 @@ private fun ConcentricCircleCta(
     }
 }
 
+/**
+ * Builds a closed [Path] by placing [BLOB_POINTS] control points on a circle of
+ * [baseRadius], displacing each radially by the sum of sine waves, then connecting
+ * adjacent points with cubic Bezier curves.
+ */
+private fun buildBlobPath(
+    cx: Float, cy: Float,
+    baseRadius: Float,
+    amplitudes: FloatArray,
+    phases: FloatArray,
+    t1: Float, t2: Float, t3: Float, t4: Float,
+    amplitudeFactor: Float
+): Path {
+    val points = Array(BLOB_POINTS) { i ->
+        val angle = TWO_PI * i / BLOB_POINTS
+        val displacement = (
+            amplitudes[i] * kotlin.math.sin(t1 + phases[i]) +
+            amplitudes[(i + 3) % BLOB_POINTS] * kotlin.math.sin(t2 + phases[(i + 1) % BLOB_POINTS] * 1.3f) +
+            amplitudes[(i + 5) % BLOB_POINTS] * kotlin.math.sin(t3 + phases[(i + 2) % BLOB_POINTS] * 0.7f) +
+            amplitudes[(i + 1) % BLOB_POINTS] * kotlin.math.sin(t4 + phases[(i + 3) % BLOB_POINTS] * 1.1f)
+        ) * amplitudeFactor
+        val r = baseRadius + displacement
+        Offset(
+            cx + r * kotlin.math.cos(angle),
+            cy + r * kotlin.math.sin(angle)
+        )
+    }
+
+    return Path().apply {
+        moveTo(points[0].x, points[0].y)
+        for (i in 0 until BLOB_POINTS) {
+            val curr = points[i]
+            val next = points[(i + 1) % BLOB_POINTS]
+            val prev = points[(i - 1 + BLOB_POINTS) % BLOB_POINTS]
+            val nextNext = points[(i + 2) % BLOB_POINTS]
+
+            // Catmull-Rom to cubic Bezier control points
+            val cp1x = curr.x + (next.x - prev.x) / 6f
+            val cp1y = curr.y + (next.y - prev.y) / 6f
+            val cp2x = next.x - (nextNext.x - curr.x) / 6f
+            val cp2y = next.y - (nextNext.y - curr.y) / 6f
+
+            cubicTo(cp1x, cp1y, cp2x, cp2y, next.x, next.y)
+        }
+        close()
+    }
+}
+
 // ─── Recent Boops ───────────────────────────────────────────────────────────
 
 @Composable
 private fun RecentBoopsSection(
     recentTransfers: List<RecentBoop>,
+    onViewAllClick: () -> Unit = {},
     onBoopClick: (RecentBoop) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
@@ -485,7 +470,8 @@ private fun RecentBoopsSection(
                 text = "View All",
                 style = MaterialTheme.typography.labelMedium,
                 fontWeight = FontWeight.Bold,
-                color = tokens.accent
+                color = tokens.accent,
+                modifier = Modifier.clickable { onViewAllClick() }
             )
         }
         recentTransfers.takeLast(3).reversed().forEach { boop ->
@@ -559,7 +545,6 @@ private fun HomeScreenDarkPreview() {
                 )
             ),
             onSendClick = {},
-            onReceiveClick = {},
             onResetClick = {}
         )
     }
@@ -573,7 +558,6 @@ private fun HomeScreenLightPreview() {
             permissionsGranted = true,
             transferUiState = TransferUiState(),
             onSendClick = {},
-            onReceiveClick = {},
             onResetClick = {}
         )
     }

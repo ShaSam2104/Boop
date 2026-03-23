@@ -29,7 +29,6 @@ fun BoopNavHost(
     settingsState: SettingsUiState,
     permissionsGranted: Boolean,
     onSendClick: () -> Unit,
-    onReceiveClick: () -> Unit,
     onResetClick: () -> Unit,
     onResendBoop: (com.shashsam.boop.ui.models.RecentBoop) -> Unit,
     onNotificationsToggle: (Boolean) -> Unit,
@@ -37,6 +36,7 @@ fun BoopNavHost(
     onSoundToggle: (Boolean) -> Unit,
     onDisplayNameChange: (String) -> Unit,
     onDarkModeToggle: (Boolean) -> Unit,
+    onReceivePermissionChange: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     NavHost(
@@ -49,7 +49,6 @@ fun BoopNavHost(
                 permissionsGranted = permissionsGranted,
                 transferUiState = transferUiState,
                 onSendClick = onSendClick,
-                onReceiveClick = onReceiveClick,
                 onResetClick = onResetClick,
                 onSettingsClick = {
                     Log.d(TAG, "Navigating to Settings")
@@ -58,6 +57,10 @@ fun BoopNavHost(
                 onNfcGuideClick = {
                     Log.d(TAG, "Navigating to NFC Guide")
                     navController.navigate(BoopRoute.NfcGuide.route)
+                },
+                onViewAllClick = {
+                    Log.d(TAG, "Navigating to History (View All)")
+                    navController.navigate(BoopRoute.History.route)
                 }
             )
         }
@@ -100,7 +103,8 @@ fun BoopNavHost(
                 onVibrationToggle = onVibrationToggle,
                 onSoundToggle = onSoundToggle,
                 onDisplayNameChange = onDisplayNameChange,
-                onDarkModeToggle = onDarkModeToggle
+                onDarkModeToggle = onDarkModeToggle,
+                onReceivePermissionChange = onReceivePermissionChange
             )
         }
 

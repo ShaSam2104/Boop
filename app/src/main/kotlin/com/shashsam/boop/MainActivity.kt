@@ -1,6 +1,7 @@
 package com.shashsam.boop
 
 import android.content.Intent
+import android.net.Uri
 import android.net.wifi.WifiManager
 import android.nfc.NfcAdapter
 import android.os.Bundle
@@ -23,7 +24,7 @@ import com.shashsam.boop.ui.navigation.BoopScaffold
 import com.shashsam.boop.ui.theme.BoopTheme
 import com.shashsam.boop.ui.viewmodels.SettingsViewModel
 import com.shashsam.boop.ui.viewmodels.TransferViewModel
-import com.shashsam.boop.utils.rememberFilePicker
+import com.shashsam.boop.utils.rememberMultiFilePicker
 import com.shashsam.boop.utils.rememberPermissionLauncher
 import com.shashsam.boop.utils.rememberPermissionsState
 import com.shashsam.boop.utils.requiredPermissions
@@ -53,6 +54,11 @@ class MainActivity : ComponentActivity() {
         } else {
             Log.d(TAG, "NFC adapter ready")
             viewModel.appendLog("📡 NFC adapter ready.")
+            // Handle NFC payload from cold-start launch intent
+            nfcReader.parseIntent(intent)?.let { details ->
+                Log.d(TAG, "NFC payload from launch intent: $details")
+                viewModel.onNfcPayloadReceived(details)
+            }
         }
 
         val wifiManager = applicationContext.getSystemService(WIFI_SERVICE) as? WifiManager
@@ -60,6 +66,14 @@ class MainActivity : ComponentActivity() {
             Log.w(TAG, "Wi-Fi is disabled")
             viewModel.setWifiWarning(true)
         }
+
+        if (wifiManager != null && isHotspotEnabled(wifiManager)) {
+            Log.w(TAG, "Hotspot is enabled — may interfere with Wi-Fi Direct")
+            viewModel.setHotspotWarning(true)
+        }
+
+        // Handle share sheet intents (ACTION_SEND / ACTION_SEND_MULTIPLE)
+        handleShareIntent(intent)
 
         enableEdgeToEdge()
 
@@ -74,12 +88,19 @@ class MainActivity : ComponentActivity() {
                     val uiState by viewModel.uiState.collectAsState()
                     var permissionsGranted by rememberPermissionsState()
 
-                    // ── File picker ──────────────────────────────────────────
-                    val filePicker = rememberFilePicker { metadata ->
-                        if (metadata != null) {
-                            Log.d(TAG, "File picked: ${metadata.name} (${metadata.formattedSize})")
-                            viewModel.appendLog("📄 Selected: ${metadata.name} (${metadata.formattedSize})")
-                            viewModel.startSending(metadata.uri)
+                    // ── File picker (multi-file) ─────────────────────────────
+                    val filePicker = rememberMultiFilePicker { metadataList ->
+                        if (metadataList.isNotEmpty()) {
+                            Log.d(TAG, "Files picked: ${metadataList.size}")
+                            viewModel.prepareSend()
+                            if (metadataList.size == 1) {
+                                val m = metadataList.first()
+                                viewModel.appendLog("📄 Selected: ${m.name} (${m.formattedSize})")
+                                viewModel.startSending(m.uri)
+                            } else {
+                                viewModel.appendLog("📄 Selected ${metadataList.size} files")
+                                viewModel.startSendingMultiple(metadataList.map { it.uri })
+                            }
                         } else {
                             Log.d(TAG, "File picker cancelled")
                             viewModel.appendLog("ℹ️ File selection cancelled.")
@@ -147,22 +168,7 @@ class MainActivity : ComponentActivity() {
                                 )
                                 permissionLauncher.launch(requiredPermissions())
                             } else {
-                                if (!viewModel.uiState.value.isSendMode) {
-                                    viewModel.prepareSend()
-                                }
                                 filePicker.launch(arrayOf("*/*"))
-                            }
-                        },
-                        onReceiveClick = {
-                            Log.d(TAG, "onReceiveClick")
-                            if (!permissionsGranted) {
-                                viewModel.appendLog(
-                                    "⚠️ Permissions required before receiving.",
-                                    isError = true
-                                )
-                                permissionLauncher.launch(requiredPermissions())
-                            } else {
-                                viewModel.prepareReceive()
                             }
                         },
                         onResetClick = {
@@ -192,11 +198,23 @@ class MainActivity : ComponentActivity() {
                         onDismissWifiWarning = {
                             viewModel.dismissWifiWarning()
                         },
+                        onDismissHotspotWarning = {
+                            viewModel.dismissHotspotWarning()
+                        },
+                        onApproveTransfer = {
+                            Log.d(TAG, "onApproveTransfer")
+                            viewModel.approveIncomingTransfer()
+                        },
+                        onRejectTransfer = {
+                            Log.d(TAG, "onRejectTransfer")
+                            viewModel.rejectIncomingTransfer()
+                        },
                         onNotificationsToggle = settingsViewModel::setNotificationsEnabled,
                         onVibrationToggle = settingsViewModel::setVibrationEnabled,
                         onSoundToggle = settingsViewModel::setSoundEnabled,
                         onDisplayNameChange = settingsViewModel::setDisplayName,
-                        onDarkModeToggle = settingsViewModel::setDarkMode
+                        onDarkModeToggle = settingsViewModel::setDarkMode,
+                        onReceivePermissionChange = settingsViewModel::setReceivePermission
                     )
                 }
             }
@@ -216,6 +234,7 @@ class MainActivity : ComponentActivity() {
         val wifiManager = applicationContext.getSystemService(WIFI_SERVICE) as? WifiManager
         if (wifiManager != null) {
             viewModel.setWifiWarning(!wifiManager.isWifiEnabled)
+            viewModel.setHotspotWarning(isHotspotEnabled(wifiManager))
         }
     }
 
@@ -225,6 +244,56 @@ class MainActivity : ComponentActivity() {
         viewModel.wifiDirectManager.unregister()
         nfcReader.disableForegroundDispatch(this)
         nfcReader.disableReaderMode(this)
+    }
+
+    /**
+     * Handles incoming share intents (ACTION_SEND / ACTION_SEND_MULTIPLE).
+     * Extracts URIs and starts the send flow.
+     */
+    @Suppress("DEPRECATION")
+    private fun handleShareIntent(intent: Intent) {
+        when (intent.action) {
+            Intent.ACTION_SEND -> {
+                val uri = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                    intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)
+                } else {
+                    intent.getParcelableExtra(Intent.EXTRA_STREAM)
+                }
+                if (uri != null) {
+                    Log.d(TAG, "ACTION_SEND received: $uri")
+                    viewModel.prepareSend()
+                    viewModel.startSending(uri)
+                }
+            }
+            Intent.ACTION_SEND_MULTIPLE -> {
+                val uris = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                    intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM, Uri::class.java)
+                } else {
+                    intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM)
+                }
+                if (!uris.isNullOrEmpty()) {
+                    Log.d(TAG, "ACTION_SEND_MULTIPLE received: ${uris.size} files")
+                    viewModel.prepareSend()
+                    viewModel.startSendingMultiple(uris)
+                }
+            }
+        }
+    }
+
+    /**
+     * Checks whether the Wi-Fi hotspot (tethering) is currently enabled
+     * via reflection on [WifiManager.isWifiApEnabled]. Returns false if
+     * the method is not available on this device.
+     */
+    private fun isHotspotEnabled(wifiManager: WifiManager): Boolean {
+        return try {
+            val method = wifiManager.javaClass.getDeclaredMethod("isWifiApEnabled")
+            method.isAccessible = true
+            method.invoke(wifiManager) as? Boolean ?: false
+        } catch (e: Exception) {
+            Log.d(TAG, "Could not check hotspot state via reflection", e)
+            false
+        }
     }
 
     /**
@@ -239,5 +308,7 @@ class MainActivity : ComponentActivity() {
             Log.d(TAG, "NFC payload via onNewIntent: $details")
             viewModel.onNfcPayloadReceived(details)
         }
+        // Handle share sheet intents arriving while activity is running
+        handleShareIntent(intent)
     }
 }

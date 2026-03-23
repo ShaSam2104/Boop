@@ -16,6 +16,8 @@ import android.util.Log
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 
@@ -349,29 +351,36 @@ class WifiDirectManager(private val context: Context) {
 
         // Clean up any stale P2P state before connecting (mirrors createGroup cleanup).
         // Without this, Samsung firmware may drop the connect request.
-        suspendCancellableCoroutine { cont ->
-            mgr.cancelConnect(ch, object : WifiP2pManager.ActionListener {
-                override fun onSuccess() {
-                    Log.d(TAG, "Pre-connect cancelConnect succeeded (stale request cleared)")
-                    if (cont.isActive) cont.resume(Unit)
+        // Run cancelConnect and removeGroup in parallel for faster cleanup.
+        coroutineScope {
+            launch {
+                suspendCancellableCoroutine { cont ->
+                    mgr.cancelConnect(ch, object : WifiP2pManager.ActionListener {
+                        override fun onSuccess() {
+                            Log.d(TAG, "Pre-connect cancelConnect succeeded (stale request cleared)")
+                            if (cont.isActive) cont.resume(Unit)
+                        }
+                        override fun onFailure(reason: Int) {
+                            Log.d(TAG, "Pre-connect cancelConnect failed: ${reason.toReasonString()} (no pending — OK)")
+                            if (cont.isActive) cont.resume(Unit)
+                        }
+                    })
                 }
-                override fun onFailure(reason: Int) {
-                    Log.d(TAG, "Pre-connect cancelConnect failed: ${reason.toReasonString()} (no pending — OK)")
-                    if (cont.isActive) cont.resume(Unit)
+            }
+            launch {
+                suspendCancellableCoroutine { cont ->
+                    mgr.removeGroup(ch, object : WifiP2pManager.ActionListener {
+                        override fun onSuccess() {
+                            Log.d(TAG, "Pre-connect removeGroup succeeded (stale group cleared)")
+                            if (cont.isActive) cont.resume(Unit)
+                        }
+                        override fun onFailure(reason: Int) {
+                            Log.d(TAG, "Pre-connect removeGroup failed: ${reason.toReasonString()} (no stale group — OK)")
+                            if (cont.isActive) cont.resume(Unit)
+                        }
+                    })
                 }
-            })
-        }
-        suspendCancellableCoroutine { cont ->
-            mgr.removeGroup(ch, object : WifiP2pManager.ActionListener {
-                override fun onSuccess() {
-                    Log.d(TAG, "Pre-connect removeGroup succeeded (stale group cleared)")
-                    if (cont.isActive) cont.resume(Unit)
-                }
-                override fun onFailure(reason: Int) {
-                    Log.d(TAG, "Pre-connect removeGroup failed: ${reason.toReasonString()} (no stale group — OK)")
-                    if (cont.isActive) cont.resume(Unit)
-                }
-            })
+            }
         }
 
         val config = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -447,8 +456,10 @@ class WifiDirectManager(private val context: Context) {
         Log.d(TAG, "requestConnectionInfo()")
     }
 
-    /** Resets [state] to [WifiDirectState.Idle]. */
-    fun reset() {
+    /** Tears down any active Wi-Fi Direct group and resets [state] to [WifiDirectState.Idle]. */
+    suspend fun reset() {
+        Log.d(TAG, "reset() — removing group before resetting to Idle")
+        removeGroup()
         _state.value = WifiDirectState.Idle
     }
 
@@ -480,10 +491,10 @@ class WifiDirectManager(private val context: Context) {
             if (group?.networkName != null) {
                 onResult(group)
             } else if (retriesLeft > 0) {
-                Log.d(TAG, "Group info not yet available, retrying in 300ms ($retriesLeft attempts left)")
+                Log.d(TAG, "Group info not yet available, retrying in 150ms ($retriesLeft attempts left)")
                 Handler(Looper.getMainLooper()).postDelayed({
                     queryGroupInfoWithRetry(mgr, ch, retriesLeft - 1, onResult)
-                }, 300L)
+                }, 150L)
             } else {
                 Log.w(TAG, "Group info unavailable after retries — using fallback")
                 onResult(group)
