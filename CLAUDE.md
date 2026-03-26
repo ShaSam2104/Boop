@@ -25,7 +25,8 @@ Boop is an Android P2P file-sharing app. Two devices share files by tapping toge
 - **Jetpack Compose + Material Design 3** — no XML layouts
 - **Jetpack Navigation Compose 2.7.7** — multi-screen navigation with bottom nav
 - **Kotlin Coroutines & Flows** — no raw threads or callbacks
-- **Room 2.6.1 + KSP 2.0.0** — local SQLite persistence for transfer history and friends list
+- **Room 2.6.1 + KSP 2.0.0** — local SQLite persistence for transfer history, friends list, and profile items
+- **Coil 2.6.0** — async image loading for profile pictures
 - **Gradle 8.6 / AGP 8.3.2** — version catalog in `gradle/libs.versions.toml`
 - **minSdk 26 / compileSdk 34**
 
@@ -38,15 +39,21 @@ Boop is an Android P2P file-sharing app. Two devices share files by tapping toge
 `MainActivity` hosts `BoopTheme > Surface > BoopScaffold`. The scaffold contains:
 - **Bottom nav bar** (`BoopBottomNavBar`): Home, History, Profile — visible on all screens except NFC Guide dialog
 - **`BoopNavHost`**: Maps routes to screen composables via Jetpack Navigation Compose
-- **Overlays**: NFC payload BottomSheet, error AlertDialog, NFC/Wi-Fi/Hotspot warning dialogs (transient, not navigation destinations)
-- **Auto-navigation**: `LaunchedEffect` observes `isTransferring` → navigates to TransferProgressScreen; NFC guide auto-shows on first NFC activation via SharedPreferences
+- **Overlays**: `TransferApprovalBottomSheet` (simple permission sheet: device name, file count, Accept/Reject — no NFC payload details), error AlertDialog, NFC/Wi-Fi/Hotspot warning dialogs (transient, not navigation destinations). Non-approval NFC payloads are auto-dismissed via `LaunchedEffect`
+- **Auto-navigation**: `LaunchedEffect` observes `isTransferring` → navigates to TransferProgressScreen (with `popUpTo(Home)`); NFC guide auto-shows on first NFC activation via SharedPreferences
 
-Routes are defined in `BoopRoute` sealed class: Home, History, Profile, TransferProgress, NfcGuide, Settings.
+Routes are defined in `BoopRoute` sealed class: Home, History, Profile, TransferProgress, NfcGuide, Settings, FriendProfile.
+
+**Navigation model**: Flat stack — back stack never exceeds `[Home, <one screen>]`. Tab destinations (Home, History, Profile) use `popUpTo(startDestination) { saveState = true } + launchSingleTop + restoreState`. Overlay screens (TransferProgress, Settings) use `popUpTo(Home) { inclusive = false } + launchSingleTop`. Bottom nav hidden on TransferProgress, NfcGuide, and Settings. No transition animations (`EnterTransition.None` / `ExitTransition.None`).
+
+**HomeScreen header icons**: Chai heart button (UPI), Info button (NFC guide). No settings icon on Home — settings accessible only via Profile.
+
+**Settings is a separate route**: Accessible from both HomeScreen gear icon and ProfileScreen settings row. ProfileScreen is profile-only (identity card + settings button + friends list). SettingsScreen has About section at the top (before toggles), followed by toggle rows, identity, receive permission, and permissions warning.
 
 ### Transfer Flow
 
 1. **Sender** taps "Boop it" → multi-file picker opens → files picked → `prepareSend()` creates Wi-Fi Direct group → `BoopHceService` (HCE) emits NDEF with MAC, TCP port, SSID, token, and `fileCount` as JSON. Also triggered via Android share sheet (`ACTION_SEND` / `ACTION_SEND_MULTIPLE`). No explicit mode toggle — cancelling picker stays in receive mode
-2. **Receiver** reads NDEF via `NfcReader` (reader mode or foreground dispatch) → extracts `ConnectionDetails` → checks receive permission: "friends" auto-accepts known SSIDs, "no_one" shows Accept/Reject BottomSheet → on accept, proceeds with Wi-Fi Direct connection
+2. **Receiver** reads NDEF via `NfcReader` (reader mode or foreground dispatch) → extracts `ConnectionDetails` → checks `type` field: "profile" triggers profile receive, "file" checks receive permission: "friends" auto-accepts known SSIDs, "no_one" shows 3-button BottomSheet (Reject / Accept / Accept + Become Friends) → on accept, proceeds with Wi-Fi Direct connection
 3. Wi-Fi Direct group join: Sender = Group Owner (GO IP: `192.168.49.1`), Receiver joins via SSID + passphrase using `WifiP2pConfig.Builder` (API 29+)
 4. TCP socket stream: Sender runs `ServerSocket`, Receiver connects and writes to MediaStore
 5. **Single-file wire format**: `[nameLen][name][size][mimeLen][mime][bytes...]` in 16 KB chunks
@@ -58,7 +65,7 @@ Routes are defined in `BoopRoute` sealed class: Home, History, Profile, Transfer
 - **Dark mode**: Black background, white text, yellow accent, purple primary buttons
 - **Light mode**: Purple-dominant background, white text + yellow accent. White primary buttons with purple text. Both themes have light content on dark-ish backgrounds
 - **Typography**: Plus Jakarta Sans (primary), Space Grotesk (numbers/monospace)
-- **Components**: `NeoBrutalistButton` (box-shadow offset), `GlassCard` (semi-transparent + border), `boopGlow` modifier
+- **Components**: `NeoBrutalistButton` (box-shadow offset, auto `onPrimary` content color via `LocalContentColor`), `GlassCard` (semi-transparent + border), `boopGlow` modifier
 - **Extended tokens**: `LocalBoopTokens` CompositionLocal for non-M3 design tokens (accent, glow, glass, card, pill, concentric-circle, nav-bar colors). No `isDark` boolean — each token carries the correct color for the active theme
 - **Haptic feedback**: `BoopHaptics` utility (`utils/BoopHaptics.kt`) with tick/click/heavy levels, gated by `LocalHapticsEnabled` CompositionLocal (respects in-app vibration toggle). Use `rememberBoopHaptics()` in composables
 - **No dynamic color**: Brand-specific palette always used; `dynamicColor` parameter removed from `BoopTheme`
@@ -69,26 +76,34 @@ Routes are defined in `BoopRoute` sealed class: Home, History, Profile, Transfer
 | Component | Role |
 |---|---|
 | `MainActivity` | Entry point, NFC foreground dispatch + cold-start intent parsing, reader mode state observer, permission launcher, share intent handler (`ACTION_SEND`/`ACTION_SEND_MULTIPLE`), hotspot detection, Compose host |
-| `nfc/BoopHceService` | HCE service implementing two protocols: (1) NDEF Type 4 Tag (AID: `D2760000850101`) for cold-start NFC discovery — Android reads NDEF via CC+NDEF file SELECT/READ BINARY sequence; (2) Proprietary Boop AID (`F0426F6F7001`) for foreground reader mode — returns NDEF bytes directly. State machine tracks `SelectedApp` (NONE/BOOP/NDEF_TAG) and `SelectedFile` (NONE/CC/NDEF) |
+| `nfc/BoopHceService` | HCE service implementing two protocols: (1) NDEF Type 4 Tag (AID: `D2760000850101`) for cold-start NFC discovery — Android reads NDEF via CC+NDEF file SELECT/READ BINARY sequence; (2) Proprietary Boop AID (`F0426F6F7001`) for foreground reader mode — returns NDEF bytes directly. State machine tracks `SelectedApp` (NONE/BOOP/NDEF_TAG) and `SelectedFile` (NONE/CC/NDEF). `connectionType` field ("file"/"profile") included in NDEF JSON |
 | `nfc/NfcReader` | NFC reader mode + foreground dispatch; parses NDEF → `ConnectionDetails` |
 | `wifi/WifiDirectManager` | Coroutine-friendly wrapper around `WifiP2pManager`; exposes `StateFlow<WifiDirectState>` |
-| `transfer/TransferManager` | Singleton with `sendFile()` / `receiveFile()` + `sendFiles()` / `receiveFiles()` (multi-file); returns `Flow<TransferProgress>` (includes `fileName`, `mimeType`, `fileIndex`, `totalFiles` on completion) |
+| `transfer/TransferManager` | Singleton with `sendFile()` / `receiveFile()` + `sendFiles()` / `receiveFiles()` (multi-file) + `sendFilesWithFriendExchange()` / `receiveFilesWithFriendExchange()` (friend exchange after file transfer) + `sendProfile()` / `receiveProfile()` (NFC profile sharing); returns `Flow<TransferProgress>` (includes `fileName`, `mimeType`, `fileIndex`, `totalFiles`, `friendRequest`, `friendProfile` on completion) |
+| `transfer/FriendExchange` | Wire format helpers for bidirectional friend/profile exchange: `ProfileData` (displayName + profileItemsJson + profilePicBytes), magic-delimited request/response protocol (BOOP_FRIEND/BOOP_FRIEND_ACK/BOOP_FRIEND_NAK) |
 | `data/BoopDatabase` | Room database singleton (`boop_database`), holds `TransferHistoryEntity` |
 | `data/TransferHistoryDao` | Room DAO: `insert()`, `getAll()` (as Flow), `deleteOlderThan()` |
 | `data/TransferHistoryEntity` | Room entity for persisted transfer history records |
-| `data/FriendEntity` | Room entity for friends list — SSID, displayName, timestamps, transferCount |
-| `data/FriendDao` | Room DAO for friends: insert, getBySsid, updateLastSeen, deleteById |
-| `ui/viewmodels/TransferViewModel` | Owns full transfer pipeline; produces `TransferUiState`; defaults to receive mode; `resetToReceive()` re-arms NFC after transfer; observes Room for history; `startSendingMultiple()` for multi-file; hotspot warning management; sender file URI persisted in history; friends auto-save on receive; approval gate (`pendingApproval`, `approveIncomingTransfer()`, `rejectIncomingTransfer()`) |
+| `data/FriendEntity` | Room entity for friends list — SSID (unique indexed), displayName, timestamps, transferCount, profileJson, profilePicPath |
+| `data/FriendDao` | Room DAO for friends: insert (IGNORE on conflict), getBySsid, getById, updateLastSeen, updateProfile, deleteById, insertOrUpdate (upsert helper) |
+| `data/ProfileItemEntity` | Room entity for user's profile bento items — type (link/email/phone), label, value, size (half/full), sortOrder |
+| `data/ProfileItemDao` | Room DAO for profile items: insert, update, deleteById, getAll (Flow), getCount, updateSortOrder |
+| `ui/viewmodels/TransferViewModel` | Owns full transfer pipeline; produces `TransferUiState`; defaults to receive mode; `resetToReceive()` re-arms NFC after transfer with `isResetting` guard; observes Room for history; `startSendingMultiple()` for multi-file; hotspot warning management; sender file URI persisted in history; opt-in friend add via `approveIncomingTransfer(becomeFriends)` + friend exchange protocol; approval gate with 3 options (`pendingApproval`, Accept/Accept+Befriend/Reject); profile sharing (`prepareProfileShare()`, `startProfileSend()`, `proceedWithProfileReceive()`); friend request handling (`acceptFriendRequest()`, `rejectFriendRequest()`); friend selection (`selectFriend()`, `removeFriend()`); exposes `friends`, `selectedFriend` StateFlows |
+| `ui/viewmodels/ProfileViewModel` | AndroidViewModel for user's local profile: `profileItems` from Room, `profilePicPath` from SharedPreferences, add/update/delete/reorder items (max 6), profile pic copy to filesDir, `buildProfileJson()` for wire transfer, `parseProfileJson()` companion for friend profile parsing |
 | `ui/viewmodels/SettingsViewModel` | SharedPreferences-backed settings (notifications, vibration, sound, display name, dark mode, receive permission) |
-| `ui/navigation/BoopScaffold` | Top-level scaffold with bottom nav, overlays (payload sheet with optional Accept/Reject buttons, error dialog, NFC/Wi-Fi/Hotspot warning dialogs), auto-navigation with 1s post-transfer delay + reset to receive |
+| `ui/navigation/BoopScaffold` | Top-level scaffold with bottom nav, overlays (3-button approval sheet: Accept/Accept+Befriend/Reject, friend request dialog, profile received dialog, error dialog, NFC/Wi-Fi/Hotspot warning dialogs), auto-navigation with 1s post-transfer delay + reset to receive |
 | `ui/navigation/BoopNavHost` | NavHost mapping routes to screen composables |
 | `ui/navigation/BoopNavigation` | Route definitions (`BoopRoute` sealed class) |
 | `ui/screens/HomeScreen` | Header with NFC icon + chai button, "Ready to Boop?" display, morphing aurora blob CTA (8-point Bezier + sweep gradient), recent boops with "View All" navigation. "Boop it" always opens multi-file picker — no explicit mode toggle |
 | `ui/screens/TransferProgressScreen` | Full-screen transfer progress with percentage, progress bar, file card, "File X of Y" counter (multi-file), cancel button |
 | `ui/screens/NfcGuideScreen` | Full-screen NFC antenna guide dialog with phone visualization and "Got it" dismiss |
-| `ui/screens/SettingsScreen` | Functional settings with toggles for notifications, vibration, sound, dark mode + editable display name + receive permission picker + About section with "Buy me a Chai" UPI button |
+| `ui/screens/SettingsScreen` | Standalone settings page: About section (top), toggle rows (notifications, vibration, sound, dark mode), receive permission, permissions warning. Identity editing moved to ProfileScreen. Back button navigates back |
+| `utils/SocialIcons` | `resolveSocialIcon(type, value)` — maps domain/type to Material ImageVector or drawable resource ID. Supports GitHub, Twitter/X, Instagram, LinkedIn, YouTube, Facebook, email, phone, fallback globe |
 | `ui/screens/HistoryScreen` | Transfer history (last 30 days) with direction + file-type filter chips, tap to open file, share button to re-send via Boop |
-| `ui/screens/ProfileScreen` | Stub screen for Profile tab |
+| `ui/screens/ProfileScreen` | Rich profile page: circular profile pic (Coil AsyncImage), display name (tap to edit), Share Profile via NFC button, bento grid section (Links — add/edit/delete items, max 6), friends list with clickable cards. Settings gear icon in header. LazyColumn layout |
+| `ui/screens/FriendProfileScreen` | Read-only friend profile view: back button, profile pic, display name, transfer stats, read-only BentoGrid (parsed from friend.profileJson), Remove Friend button |
+| `ui/components/BentoGrid` | 2-column mixed-size grid for profile items: half items share rows, full items take full width. Edit mode (edit/delete overlays) and view mode (tap to open link/email/phone, long-press to copy) |
+| `ui/components/ProfileItemDialog` | AlertDialog for add/edit profile item: type selector (Link/Email/Phone), label/value fields (keyboard adapts), size toggle (Half/Full) |
 | `ui/components/NfcAntennaGuide` | Canvas visualization of NFC antenna location using `getNfcAntennaInfo()` (API 34+) with fallback |
 | `ui/theme/BoopDesignSystem` | Neo-brutalist components: `NeoBrutalistButton`, `GlassCard`, `boopGlow`, `BoopBottomNavBar`, design tokens |
 | `ui/theme/Color` | Brand colors (purple, yellow), surface tones (dark/light), glass/glow colors |
@@ -137,14 +152,19 @@ Routes are defined in `BoopRoute` sealed class: Home, History, Profile, Transfer
 - **Share sheet integration** — `AndroidManifest.xml` declares `ACTION_SEND` + `ACTION_SEND_MULTIPLE` intent filters. `MainActivity.handleShareIntent()` processes incoming URIs in both `onCreate` and `onNewIntent`
 - **Room schema export** — `exportSchema = false` on `BoopDatabase`; no schema JSON files generated
 - **TCP stream consistency** — `streamBytes()` must use the SAME wrapped stream (`DataOutputStream`/`DataInputStream`) as `writeHeader()`/`readHeader()`. Using a fresh `socket.getOutputStream()`/`socket.getInputStream()` bypasses the buffer, causing data corruption. `streamBytes()` also reads exactly `totalSize` bytes (not until EOF) so multi-file transfers don't read past file boundaries
+- **Transfer speed** — `CHUNK_SIZE = 256 KB`, buffered streams sized to `CHUNK_SIZE`, socket buffers = 512 KB, `tcpNoDelay = true`. Progress callback throttled to percentage changes (max 101 per file)
+- **EADDRINUSE on cancel + re-send** — `TransferManager.createServerSocket()` uses `SO_REUSEADDR`. `activeServerSocket` tracks the live server socket. `TransferManager.cleanup()` force-closes it. Called from `TransferViewModel` before `startSending()`/`startSendingMultiple()` and in `reset()`/`resetToReceive()`
+- **Successive transfer reliability** — `TransferUiState.isResetting` guards `onNfcPayloadReceived()` during reset. `resetToReceive()` sets `isResetting = true` synchronously, awaits `wifiDirectManager.reset()`, then sets `isReceiveMode = true, isNfcReading = true, isResetting = false`
 - **NFC TECH_DISCOVERED** — manifest declares both `NDEF_DISCOVERED` and `TECH_DISCOVERED` intent filters with `nfc_tech_filter.xml` (IsoDep) so the app launches on HCE tap even when not running
 - **NFC cold-start via Type 4 Tag** — `BoopHceService` implements NDEF Type 4 Tag (AID `D2760000850101`) so Android's NFC stack reads the NDEF message during discovery. This fires `NDEF_DISCOVERED` with payload in intent extras, even when the Receiver app is closed. The proprietary Boop AID path still works for foreground reader mode
 - **Multi-file history** — `handleMultiFileProgress()` detects per-file completion (`fileName != null && bytesTransferred == totalBytes`) and inserts a history entry for each file. For sender, uses `pendingFileUris[fileIndex]` for the correct per-file URI instead of `senderFileUri` (which only holds the first file's URI)
 - **History filter labels** — "Direction" and "File Type" labels precede their respective filter chip rows for clarity
 - **Auto-infer send/receive mode** — no explicit mode toggle. "Boop it" always opens the file picker. Picking files calls `prepareSend()` then `startSending()`/`startSendingMultiple()`. Cancelling the picker stays in default receive mode. App always listens for NFC in receive mode
-- **Friends list** — `FriendEntity` tracks sender SSIDs. Auto-saved on receiver side at transfer completion via `saveFriendIfNeeded()`. Display name extracted from SSID via regex `DIRECT-XX-(.+)`. `currentConnectionSsid` cleared in `reset()` and `resetToReceive()`
-- **Receive permission** — `SettingsViewModel.receivePermission` ("friends" or "no_one"). `TransferViewModel.onNfcPayloadReceived()` checks permission + friend status. "friends" auto-accepts known SSIDs, otherwise sets `pendingApproval` on `TransferUiState`. `BoopScaffold` shows Accept/Reject buttons in BottomSheet when `pendingApproval != null`
-- **Room migration 1→2** — `MIGRATION_1_2` creates the `friends` table. Applied via `.addMigrations()` in `BoopDatabase.getInstance()`
+- **Friends are opt-in only** — friends are NOT auto-saved on receive. Only added when user taps "Accept + Become Friends" in the 3-button approval sheet. Friend exchange protocol runs post-transfer over the same TCP socket: receiver sends BOOP_FRIEND magic + local ProfileData, sender sees friend request prompt, responds with ACK + their ProfileData or NAK. Profile pics cached to `filesDir/friend_pics/{ssid_hash}.jpg`
+- **Receive permission** — `SettingsViewModel.receivePermission` ("friends" or "no_one"). `TransferViewModel.onNfcPayloadReceived()` checks permission + friend status. "friends" auto-accepts known SSIDs, otherwise sets `pendingApproval` on `TransferUiState`. `BoopScaffold` shows 3-button BottomSheet (Reject / Accept / Accept + Become Friends) when `pendingApproval != null`
+- **NFC profile sharing** — "Share Profile" button on ProfileScreen calls `prepareProfileShare()` → creates Wi-Fi Direct group with `connectionType = "profile"` → HCE broadcasts. Receiver's `onNfcPayloadReceived` detects `type == "profile"` → connects and receives ProfileData via TCP → shows save dialog. Does NOT create transfer history entries
+- **Profile bento grid** — max 6 items, types: link/email/phone, sizes: half (1x1) / full (2x1). Stored in Room `profile_items` table. Items serialized to JSON for wire transfer via `ProfileViewModel.buildProfileJson()`. Friend profiles parsed via `ProfileViewModel.parseProfileJson()`
+- **Room migration 1→2→3** — `MIGRATION_1_2` creates the `friends` table. `MIGRATION_2_3` creates `profile_items` table, deduplicates friends by SSID, adds `profileJson`/`profilePicPath` columns to friends, creates unique SSID index. Applied via `.addMigrations(MIGRATION_1_2, MIGRATION_2_3)` in `BoopDatabase.getInstance()`
 - **UPI chai button** — "Buy me a Chai" launches `upi://pay?pa=03.shubhamshah-1@oksbi&pn=Boop&tn=Buy%20me%20a%20Chai&cu=INR` via `ACTION_VIEW` intent. Present in Home header (coffee icon) and Settings About section
 
 ## Tests
@@ -153,13 +173,16 @@ JVM unit tests live in `app/src/test/kotlin/com/shashsam/boop/`. Run with `./gra
 
 | Test File | Coverage |
 |---|---|
-| `nfc/NfcReaderTest` | JSON payload parsing, APDU builder, edge cases (12 tests) |
-| `ui/viewmodels/TransferUiStateTest` | Default receive mode, mode transitions, progress, completion, error, logs, recent transfers (9 tests) |
+| `nfc/NfcReaderTest` | JSON payload parsing, APDU builder, type field parsing, backward compat (14 tests) |
+| `ui/viewmodels/TransferUiStateTest` | Default receive mode, mode transitions, progress, completion, error, logs, recent transfers, isResetting, pendingFriendRequest, isProfileShareMode, receivedProfile, friendExchangeComplete (15 tests) |
 | `utils/FormattedSizeTest` | B/KB/MB/GB boundaries and values (8 tests) |
-| `ui/navigation/BoopRouteTest` | Route strings, uniqueness across all 6 routes (7 tests) |
+| `ui/navigation/BoopRouteTest` | Route strings, uniqueness across all 7 routes, FriendProfile route + createRoute (9 tests) |
 | `ui/viewmodels/SettingsUiStateTest` | Defaults, toggle copies, display name, dark mode, equality (7 tests) |
 | `ui/models/RecentBoopTest` | Constructor fields, copy, equality, wasSender flag (5 tests) |
 | `ui/models/LogEntryTest` | Default isError, error flag, equality (3 tests) |
+| `data/ProfileItemEntityTest` | Constructor, default id, copy, equality, sortOrder (5 tests) |
+| `transfer/FriendExchangeTest` | Wire format round-trip (with/without pic), ACK/NAK responses, magic constants, ProfileData equality (8 tests) |
+| `utils/SocialIconsTest` | Domain detection for each social platform, email/phone types, fallback, SOCIAL_DOMAINS map (12 tests) |
 | `ExampleUnitTest` | Sanity check, permission list non-empty (2 tests) |
 
 **Note:** `SettingsViewModel` requires `Application` context — tested indirectly via `SettingsUiState` data class tests. `TransferViewModel` similarly requires Android framework; business logic tested via `TransferUiState` state transitions.
@@ -171,12 +194,18 @@ JVM unit tests live in `app/src/test/kotlin/com/shashsam/boop/`. Run with `./gra
 | HCE AID (Boop) | `F0426F6F7001` |
 | HCE AID (NDEF Type 4) | `D2760000850101` |
 | NDEF MIME type | `application/com.shashsam.boop` |
-| NDEF JSON fields | `mac`, `port`, `ssid`, `token`, `fileCount` |
+| NDEF JSON fields | `mac`, `port`, `ssid`, `token`, `fileCount`, `displayName` (optional), `type` ("file" or "profile", default "file") |
 | Wi-Fi Direct GO IP | `192.168.49.1` |
 | TCP transfer port | `8765` |
+| TCP chunk size | `256 KB` |
+| Socket buffer size | `512 KB` |
 | Settings SharedPrefs | `boop_settings` (keys: notifications_enabled, vibration_enabled, sound_enabled, display_name, dark_mode_enabled, receive_permission) |
 | UPI Payee | `03.shubhamshah-1@oksbi` |
-| Room DB version | 2 (migration 1→2 adds `friends` table) |
+| Room DB version | 3 (migration 1→2 adds `friends` table, migration 2→3 adds `profile_items` table + `profileJson`/`profilePicPath` columns to friends + SSID unique index) |
+| Profile pic SharedPrefs | `boop_settings` / `profile_pic_path` |
+| Friend exchange magic | `BOOP_FRIEND\n`, `BOOP_FRIEND_ACK\n`, `BOOP_FRIEND_NAK\n` |
+| Max profile items | 6 |
+| Social icon drawables | `ic_github`, `ic_twitter`, `ic_instagram`, `ic_linkedin`, `ic_youtube`, `ic_facebook` |
 | NFC Guide SharedPrefs | `boop_prefs` / `nfc_antenna_guide_seen` |
 
 
