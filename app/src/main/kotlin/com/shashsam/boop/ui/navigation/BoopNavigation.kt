@@ -10,4 +10,7 @@ sealed class BoopRoute(val route: String) {
     data object TransferProgress : BoopRoute("transfer_progress")
     data object NfcGuide : BoopRoute("nfc_guide")
     data object Settings : BoopRoute("settings")
+    data object FriendProfile : BoopRoute("friend_profile/{friendId}") {
+        fun createRoute(friendId: Long) = "friend_profile/$friendId"
+    }
 }

@@ -123,6 +123,17 @@ class BoopHceService : HostApduService() {
          * Defaults to 1 for single-file transfers.
          */
         @Volatile var connectionFileCount: Int = 1
+
+        /**
+         * Sender's display name from app settings.
+         * Transmitted to Receiver so friends list shows the chosen name.
+         */
+        @Volatile var connectionDisplayName: String = ""
+
+        /**
+         * Connection type: "file" for file transfers, "profile" for NFC profile sharing.
+         */
+        @Volatile var connectionType: String = "file"
     }
 
     /** Which application AID was selected. */
@@ -300,6 +311,10 @@ class BoopHceService : HostApduService() {
             put("ssid", connectionSsid)
             put("token", connectionToken)
             put("fileCount", connectionFileCount)
+            if (connectionDisplayName.isNotBlank()) {
+                put("displayName", connectionDisplayName)
+            }
+            put("type", connectionType)
         }
         val json = jsonObj.toString()
         Log.d(TAG, "NDEF JSON payload: $json")

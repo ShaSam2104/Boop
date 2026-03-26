@@ -22,6 +22,7 @@ import com.shashsam.boop.nfc.NfcReader
 import com.shashsam.boop.nfc.NfcReaderState
 import com.shashsam.boop.ui.navigation.BoopScaffold
 import com.shashsam.boop.ui.theme.BoopTheme
+import com.shashsam.boop.ui.viewmodels.ProfileViewModel
 import com.shashsam.boop.ui.viewmodels.SettingsViewModel
 import com.shashsam.boop.ui.viewmodels.TransferViewModel
 import com.shashsam.boop.utils.rememberMultiFilePicker
@@ -35,6 +36,7 @@ class MainActivity : ComponentActivity() {
 
     private val viewModel: TransferViewModel by viewModels()
     private val settingsViewModel: SettingsViewModel by viewModels()
+    private val profileViewModel: ProfileViewModel by viewModels()
 
     /** Wraps the NFC adapter for reader mode and foreground dispatch. */
     private lateinit var nfcReader: NfcReader
@@ -86,6 +88,10 @@ class MainActivity : ComponentActivity() {
                     color = MaterialTheme.colorScheme.background
                 ) {
                     val uiState by viewModel.uiState.collectAsState()
+                    val friends by viewModel.friends.collectAsState()
+                    val profileItems by profileViewModel.profileItems.collectAsState()
+                    val profilePicPath by profileViewModel.profilePicPath.collectAsState()
+                    val selectedFriend by viewModel.selectedFriend.collectAsState()
                     var permissionsGranted by rememberPermissionsState()
 
                     // ── File picker (multi-file) ─────────────────────────────
@@ -158,6 +164,10 @@ class MainActivity : ComponentActivity() {
                     BoopScaffold(
                         transferUiState = uiState,
                         settingsState = settingsState,
+                        friends = friends,
+                        profileItems = profileItems,
+                        profilePicPath = profilePicPath,
+                        selectedFriend = selectedFriend,
                         permissionsGranted = permissionsGranted,
                         onSendClick = {
                             Log.d(TAG, "onSendClick")
@@ -203,18 +213,74 @@ class MainActivity : ComponentActivity() {
                         },
                         onApproveTransfer = {
                             Log.d(TAG, "onApproveTransfer")
-                            viewModel.approveIncomingTransfer()
+                            viewModel.approveIncomingTransfer(becomeFriends = false)
+                        },
+                        onApproveAndBefriend = {
+                            Log.d(TAG, "onApproveAndBefriend")
+                            viewModel.approveIncomingTransfer(becomeFriends = true)
                         },
                         onRejectTransfer = {
                             Log.d(TAG, "onRejectTransfer")
                             viewModel.rejectIncomingTransfer()
+                        },
+                        onAcceptFriendRequest = {
+                            Log.d(TAG, "onAcceptFriendRequest")
+                            viewModel.acceptFriendRequest()
+                        },
+                        onRejectFriendRequest = {
+                            Log.d(TAG, "onRejectFriendRequest")
+                            viewModel.rejectFriendRequest()
+                        },
+                        onSaveReceivedProfile = {
+                            Log.d(TAG, "onSaveReceivedProfile")
+                            viewModel.saveReceivedProfileAsFriend()
+                        },
+                        onDismissReceivedProfile = {
+                            viewModel.dismissReceivedProfile()
                         },
                         onNotificationsToggle = settingsViewModel::setNotificationsEnabled,
                         onVibrationToggle = settingsViewModel::setVibrationEnabled,
                         onSoundToggle = settingsViewModel::setSoundEnabled,
                         onDisplayNameChange = settingsViewModel::setDisplayName,
                         onDarkModeToggle = settingsViewModel::setDarkMode,
-                        onReceivePermissionChange = settingsViewModel::setReceivePermission
+                        onReceivePermissionChange = settingsViewModel::setReceivePermission,
+                        onProfilePicPick = { uri ->
+                            profileViewModel.setProfilePic(uri)
+                        },
+                        onAddProfileItem = { type, label, value, size ->
+                            profileViewModel.addProfileItem(type, label, value, size)
+                        },
+                        onEditProfileItem = { item ->
+                            profileViewModel.updateProfileItem(item)
+                        },
+                        onDeleteProfileItem = { id ->
+                            profileViewModel.deleteProfileItem(id)
+                        },
+                        onReorderProfileItems = { items ->
+                            profileViewModel.reorderProfileItems(items)
+                        },
+                        onFriendClick = { friend ->
+                            viewModel.selectFriend(friend.id)
+                        },
+                        onSelectFriend = { id ->
+                            viewModel.selectFriend(id)
+                        },
+                        onRemoveFriend = { id ->
+                            viewModel.removeFriend(id)
+                        },
+                        onShareProfileClick = {
+                            Log.d(TAG, "onShareProfileClick")
+                            val profileData = com.shashsam.boop.transfer.ProfileData(
+                                displayName = settingsState.displayName,
+                                profileItemsJson = profileViewModel.buildProfileJson(),
+                                profilePicBytes = profileViewModel.getProfilePicFile()?.readBytes()
+                            )
+                            viewModel.prepareProfileShare()
+                            viewModel.startProfileSend(profileData)
+                        },
+                        onCancelProfileShare = {
+                            viewModel.cancelProfileShare()
+                        }
                     )
                 }
             }
