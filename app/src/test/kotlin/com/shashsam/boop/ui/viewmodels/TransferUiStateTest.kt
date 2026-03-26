@@ -1,5 +1,6 @@
 package com.shashsam.boop.ui.viewmodels
 
+import com.shashsam.boop.transfer.ProfileData
 import com.shashsam.boop.ui.models.LogEntry
 import com.shashsam.boop.ui.models.RecentBoop
 import org.junit.Assert.assertEquals
@@ -107,5 +108,51 @@ class TransferUiStateTest {
     fun `currentFileName is tracked`() {
         val state = TransferUiState().copy(currentFileName = "vacation.zip")
         assertEquals("vacation.zip", state.currentFileName)
+    }
+
+    @Test
+    fun `isResetting defaults to false and can be set`() {
+        val state = TransferUiState()
+        assertFalse(state.isResetting)
+        val resetting = state.copy(isResetting = true)
+        assertTrue(resetting.isResetting)
+    }
+
+    @Test
+    fun `pendingFriendRequest defaults to null`() {
+        val state = TransferUiState()
+        assertNull(state.pendingFriendRequest)
+    }
+
+    @Test
+    fun `pendingFriendRequest can be set`() {
+        val profile = ProfileData("Test", "[]", null)
+        val state = TransferUiState().copy(pendingFriendRequest = profile)
+        assertEquals("Test", state.pendingFriendRequest?.displayName)
+    }
+
+    @Test
+    fun `isProfileShareMode defaults to false`() {
+        val state = TransferUiState()
+        assertFalse(state.isProfileShareMode)
+        val sharing = state.copy(isProfileShareMode = true)
+        assertTrue(sharing.isProfileShareMode)
+    }
+
+    @Test
+    fun `receivedProfile defaults to null`() {
+        val state = TransferUiState()
+        assertNull(state.receivedProfile)
+        val profile = ProfileData("Received", "[]", null)
+        val withProfile = state.copy(receivedProfile = profile)
+        assertEquals("Received", withProfile.receivedProfile?.displayName)
+    }
+
+    @Test
+    fun `friendExchangeComplete defaults to false`() {
+        val state = TransferUiState()
+        assertFalse(state.friendExchangeComplete)
+        val exchanged = state.copy(friendExchangeComplete = true)
+        assertTrue(exchanged.friendExchangeComplete)
     }
 }

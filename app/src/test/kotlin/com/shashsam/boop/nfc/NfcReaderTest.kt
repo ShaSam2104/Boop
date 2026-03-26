@@ -132,6 +132,22 @@ class NfcReaderTest {
         assertNull("Should return null for empty JSON object", result)
     }
 
+    @Test
+    fun `parsePayloadJson extracts type field`() {
+        val json = """{"mac":"AA:BB:CC:DD:EE:FF","port":8765,"type":"profile"}"""
+        val result = NfcReader.parsePayloadJson(json)
+        assertNotNull(result)
+        assertEquals("profile", result!!.type)
+    }
+
+    @Test
+    fun `parsePayloadJson defaults type to file when absent`() {
+        val json = """{"mac":"AA:BB:CC:DD:EE:FF","port":8765}"""
+        val result = NfcReader.parsePayloadJson(json)
+        assertNotNull(result)
+        assertEquals("file", result!!.type)
+    }
+
     // ─── SELECT AID APDU builder test ─────────────────────────────────────────
 
     @Test

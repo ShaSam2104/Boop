@@ -36,6 +36,16 @@ class BoopRouteTest {
     }
 
     @Test
+    fun `FriendProfile route contains friendId argument`() {
+        assertEquals("friend_profile/{friendId}", BoopRoute.FriendProfile.route)
+    }
+
+    @Test
+    fun `FriendProfile createRoute produces correct path`() {
+        assertEquals("friend_profile/42", BoopRoute.FriendProfile.createRoute(42L))
+    }
+
+    @Test
     fun `all routes are unique`() {
         val routes = listOf(
             BoopRoute.Home,
@@ -43,7 +53,8 @@ class BoopRouteTest {
             BoopRoute.Profile,
             BoopRoute.TransferProgress,
             BoopRoute.NfcGuide,
-            BoopRoute.Settings
+            BoopRoute.Settings,
+            BoopRoute.FriendProfile
         ).map { it.route }
         assertEquals("All routes should be unique", routes.size, routes.toSet().size)
     }
