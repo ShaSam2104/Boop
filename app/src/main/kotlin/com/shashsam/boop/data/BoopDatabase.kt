@@ -8,13 +8,14 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
-    entities = [TransferHistoryEntity::class, FriendEntity::class],
-    version = 2,
+    entities = [TransferHistoryEntity::class, FriendEntity::class, ProfileItemEntity::class],
+    version = 3,
     exportSchema = false
 )
 abstract class BoopDatabase : RoomDatabase() {
     abstract fun transferHistoryDao(): TransferHistoryDao
     abstract fun friendDao(): FriendDao
+    abstract fun profileItemDao(): ProfileItemDao
 
     companion object {
         @Volatile
@@ -35,13 +36,43 @@ abstract class BoopDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // 1. Create profile_items table
+                db.execSQL(
+                    """CREATE TABLE IF NOT EXISTS profile_items (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        type TEXT NOT NULL,
+                        label TEXT NOT NULL,
+                        value TEXT NOT NULL,
+                        size TEXT NOT NULL,
+                        sortOrder INTEGER NOT NULL
+                    )"""
+                )
+
+                // 2. Deduplicate existing friends by SSID (keep highest id per SSID)
+                db.execSQL(
+                    """DELETE FROM friends WHERE id NOT IN (
+                        SELECT MAX(id) FROM friends GROUP BY ssid
+                    )"""
+                )
+
+                // 3. Add new columns to friends table
+                db.execSQL("ALTER TABLE friends ADD COLUMN profileJson TEXT")
+                db.execSQL("ALTER TABLE friends ADD COLUMN profilePicPath TEXT")
+
+                // 4. Create unique index on ssid
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_friends_ssid ON friends (ssid)")
+            }
+        }
+
         fun getInstance(context: Context): BoopDatabase =
             INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(
                     context.applicationContext,
                     BoopDatabase::class.java,
                     "boop_database"
-                ).addMigrations(MIGRATION_1_2).build().also { INSTANCE = it }
+                ).addMigrations(MIGRATION_1_2, MIGRATION_2_3).build().also { INSTANCE = it }
             }
     }
 }
