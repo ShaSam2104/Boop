@@ -8,6 +8,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -15,13 +16,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Nfc
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -40,13 +39,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.shashsam.boop.data.FriendEntity
+import com.shashsam.boop.data.ProfileItemEntity
 import com.shashsam.boop.nfc.ConnectionDetails
+import com.shashsam.boop.transfer.ProfileData
 import com.shashsam.boop.ui.theme.BoopBottomNavBar
 import com.shashsam.boop.ui.theme.NeoBrutalistButton
 import com.shashsam.boop.ui.viewmodels.SettingsUiState
@@ -66,6 +67,10 @@ private const val KEY_ANTENNA_GUIDE_SEEN = "nfc_antenna_guide_seen"
 fun BoopScaffold(
     transferUiState: TransferUiState,
     settingsState: SettingsUiState,
+    friends: List<FriendEntity>,
+    profileItems: List<ProfileItemEntity>,
+    profilePicPath: String?,
+    selectedFriend: FriendEntity?,
     permissionsGranted: Boolean,
     onSendClick: () -> Unit,
     onResetClick: () -> Unit,
@@ -77,13 +82,28 @@ fun BoopScaffold(
     onDismissWifiWarning: () -> Unit,
     onDismissHotspotWarning: () -> Unit,
     onApproveTransfer: () -> Unit,
+    onApproveAndBefriend: () -> Unit,
     onRejectTransfer: () -> Unit,
+    onAcceptFriendRequest: () -> Unit,
+    onRejectFriendRequest: () -> Unit,
+    onSaveReceivedProfile: () -> Unit,
+    onDismissReceivedProfile: () -> Unit,
     onNotificationsToggle: (Boolean) -> Unit,
     onVibrationToggle: (Boolean) -> Unit,
     onSoundToggle: (Boolean) -> Unit,
     onDisplayNameChange: (String) -> Unit,
     onDarkModeToggle: (Boolean) -> Unit,
     onReceivePermissionChange: (String) -> Unit,
+    onProfilePicPick: (android.net.Uri) -> Unit,
+    onAddProfileItem: (String, String, String, String) -> Unit,
+    onEditProfileItem: (ProfileItemEntity) -> Unit,
+    onDeleteProfileItem: (Long) -> Unit,
+    onReorderProfileItems: (List<ProfileItemEntity>) -> Unit,
+    onFriendClick: (FriendEntity) -> Unit,
+    onSelectFriend: (Long) -> Unit,
+    onRemoveFriend: (Long) -> Unit,
+    onShareProfileClick: () -> Unit,
+    onCancelProfileShare: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     CompositionLocalProvider(LocalHapticsEnabled provides settingsState.vibrationEnabled) {
@@ -92,14 +112,18 @@ fun BoopScaffold(
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
 
-    // Only hide bottom nav for modal overlays (NFC guide dialog)
+    // Hide bottom nav for modal overlays and overlay screens
     val hideBottomNav = currentRoute == BoopRoute.NfcGuide.route
+        || currentRoute == BoopRoute.TransferProgress.route
+        || currentRoute == BoopRoute.Settings.route
+        || currentRoute == BoopRoute.FriendProfile.route
 
     // ── Auto-navigation: transfer progress ───────────────────────────────
     LaunchedEffect(transferUiState.isTransferring) {
         if (transferUiState.isTransferring && currentRoute != BoopRoute.TransferProgress.route) {
             Log.d(TAG, "Auto-navigating to TransferProgress")
             navController.navigate(BoopRoute.TransferProgress.route) {
+                popUpTo(BoopRoute.Home.route) { inclusive = false }
                 launchSingleTop = true
             }
         }
@@ -110,7 +134,7 @@ fun BoopScaffold(
         if (transferUiState.transferComplete && currentRoute == BoopRoute.TransferProgress.route) {
             Log.d(TAG, "Transfer complete — navigating back after delay")
             kotlinx.coroutines.delay(1000)
-            navController.popBackStack()
+            navController.popBackStack(BoopRoute.Home.route, inclusive = false)
             onResetToReceive()
         }
     }
@@ -159,6 +183,10 @@ fun BoopScaffold(
             navController = navController,
             transferUiState = transferUiState,
             settingsState = settingsState,
+            friends = friends,
+            profileItems = profileItems,
+            profilePicPath = profilePicPath,
+            selectedFriend = selectedFriend,
             permissionsGranted = permissionsGranted,
             onSendClick = onSendClick,
             onResetClick = onResetClick,
@@ -169,28 +197,107 @@ fun BoopScaffold(
             onDisplayNameChange = onDisplayNameChange,
             onDarkModeToggle = onDarkModeToggle,
             onReceivePermissionChange = onReceivePermissionChange,
+            onProfilePicPick = onProfilePicPick,
+            onAddProfileItem = onAddProfileItem,
+            onEditProfileItem = onEditProfileItem,
+            onDeleteProfileItem = onDeleteProfileItem,
+            onReorderProfileItems = onReorderProfileItems,
+            onFriendClick = onFriendClick,
+            onSelectFriend = onSelectFriend,
+            onRemoveFriend = onRemoveFriend,
+            onShareProfileClick = onShareProfileClick,
+            onCancelProfileShare = onCancelProfileShare,
             modifier = Modifier.padding(innerPadding)
         )
     }
 
-    // ── NFC Payload BottomSheet (with optional approval buttons) ─────────
+    // ── Auto-dismiss non-approval NFC payload ──────────────────────────
+    LaunchedEffect(transferUiState.receivedPayload, transferUiState.pendingApproval) {
+        if (transferUiState.receivedPayload != null && transferUiState.pendingApproval == null) {
+            onDismissPayload()
+        }
+    }
+
+    // ── Transfer Approval BottomSheet ───────────────────────────────
     val pendingApproval = transferUiState.pendingApproval
-    val receivedPayload = transferUiState.receivedPayload
     if (pendingApproval != null) {
-        NfcPayloadBottomSheet(
+        TransferApprovalBottomSheet(
             payload = pendingApproval,
-            showApprovalButtons = true,
             onApprove = onApproveTransfer,
+            onApproveAndBefriend = onApproveAndBefriend,
             onReject = onRejectTransfer,
             onDismiss = onRejectTransfer
         )
-    } else if (receivedPayload != null) {
-        NfcPayloadBottomSheet(
-            payload = receivedPayload,
-            showApprovalButtons = false,
-            onApprove = {},
-            onReject = {},
-            onDismiss = onDismissPayload
+    }
+
+    // ── Friend Request Dialog (sender sees after file transfer) ──────
+    if (transferUiState.pendingFriendRequest != null) {
+        val friendName = transferUiState.pendingFriendRequest.displayName.takeIf { it.isNotBlank() } ?: "Someone"
+        AlertDialog(
+            onDismissRequest = onRejectFriendRequest,
+            icon = {
+                Icon(
+                    imageVector = Icons.Filled.Nfc,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(40.dp)
+                )
+            },
+            title = {
+                Text(
+                    text = "Friend Request",
+                    fontWeight = FontWeight.ExtraBold
+                )
+            },
+            text = {
+                Text(text = "$friendName wants to become friends")
+            },
+            confirmButton = {
+                NeoBrutalistButton(onClick = onAcceptFriendRequest) {
+                    Text("Accept", fontWeight = FontWeight.ExtraBold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = onRejectFriendRequest) {
+                    Text("Decline", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.error)
+                }
+            }
+        )
+    }
+
+    // ── Profile Received Dialog (NFC profile share) ──────────────────
+    if (transferUiState.receivedProfile != null) {
+        val profile = transferUiState.receivedProfile
+        val profileName = profile.displayName.takeIf { it.isNotBlank() } ?: "Unknown"
+        AlertDialog(
+            onDismissRequest = onDismissReceivedProfile,
+            icon = {
+                Icon(
+                    imageVector = Icons.Filled.Nfc,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(40.dp)
+                )
+            },
+            title = {
+                Text(
+                    text = "Profile Received",
+                    fontWeight = FontWeight.ExtraBold
+                )
+            },
+            text = {
+                Text(text = "Received profile from $profileName")
+            },
+            confirmButton = {
+                NeoBrutalistButton(onClick = onSaveReceivedProfile) {
+                    Text("Save as Friend", fontWeight = FontWeight.ExtraBold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = onDismissReceivedProfile) {
+                    Text("Dismiss", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
         )
     }
 
@@ -333,21 +440,23 @@ fun BoopScaffold(
     } // CompositionLocalProvider
 }
 
-// ─── NFC Payload BottomSheet ────────────────────────────────────────────────
+// ─── Transfer Approval BottomSheet ──────────────────────────────────────────
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun NfcPayloadBottomSheet(
+private fun TransferApprovalBottomSheet(
     payload: ConnectionDetails,
-    showApprovalButtons: Boolean,
     onApprove: () -> Unit,
+    onApproveAndBefriend: () -> Unit,
     onReject: () -> Unit,
     onDismiss: () -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
-    // Extract device name from SSID for display
-    val deviceName = Regex("^DIRECT-[a-zA-Z0-9]{2}-(.+)$").find(payload.ssid)?.groupValues?.get(1) ?: payload.ssid
+    // Prefer sender's display name, fall back to SSID-derived device name
+    val deviceName = payload.displayName.takeIf { it.isNotBlank() }
+        ?: Regex("^DIRECT-[a-zA-Z0-9]{2}-(.+)$").find(payload.ssid)?.groupValues?.get(1)
+        ?: payload.ssid
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -359,110 +468,83 @@ private fun NfcPayloadBottomSheet(
                 .fillMaxWidth()
                 .padding(horizontal = 24.dp)
                 .padding(bottom = 36.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            Icon(
+                imageVector = Icons.Filled.Nfc,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(40.dp)
+            )
+
+            Text(
+                text = "Incoming Transfer",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.ExtraBold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+
+            Text(
+                text = if (payload.fileCount > 1)
+                    "$deviceName wants to send you ${payload.fileCount} files"
+                else
+                    "$deviceName wants to send you a file",
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Accept button
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(end = 6.dp, bottom = 6.dp)
             ) {
-                Icon(
-                    imageVector = Icons.Filled.Nfc,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(28.dp)
-                )
-                Text(
-                    text = if (showApprovalButtons) "Transfer from $deviceName" else "NFC Payload Received",
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-            }
-
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant
-                )
-            ) {
-                Text(
-                    text = buildPayloadJsonString(payload),
-                    style = MaterialTheme.typography.bodyLarge,
-                    fontFamily = FontFamily.Monospace,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(16.dp)
-                )
-            }
-
-            PayloadDetailRow(label = "SSID", value = payload.ssid)
-            PayloadDetailRow(label = "Token", value = payload.token)
-            PayloadDetailRow(label = "MAC", value = payload.mac)
-            PayloadDetailRow(label = "Port", value = payload.port.toString())
-            if (payload.fileCount > 1) {
-                PayloadDetailRow(label = "Files", value = payload.fileCount.toString())
-            }
-
-            if (showApprovalButtons) {
-                Spacer(modifier = Modifier.height(8.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                NeoBrutalistButton(
+                    onClick = onApprove
                 ) {
-                    TextButton(
-                        onClick = onReject,
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Text(
-                            text = "Reject",
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.error
-                        )
-                    }
-                    NeoBrutalistButton(
-                        onClick = onApprove,
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Text(
-                            text = "Accept",
-                            fontWeight = FontWeight.ExtraBold
-                        )
-                    }
+                    Text(
+                        text = "Accept",
+                        fontWeight = FontWeight.ExtraBold
+                    )
                 }
+            }
+
+            // Accept + Become Friends button
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(end = 6.dp, bottom = 6.dp)
+            ) {
+                NeoBrutalistButton(
+                    onClick = onApproveAndBefriend
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Nfc,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Accept + Become Friends",
+                        fontWeight = FontWeight.ExtraBold
+                    )
+                }
+            }
+
+            // Reject button
+            TextButton(
+                onClick = onReject,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    text = "Reject",
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.error
+                )
             }
         }
     }
-}
-
-@Composable
-private fun PayloadDetailRow(label: String, value: String) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Text(
-            text = value.ifEmpty { "\u2014" },
-            style = MaterialTheme.typography.bodyLarge,
-            fontWeight = FontWeight.Bold,
-            fontFamily = FontFamily.Monospace,
-            color = MaterialTheme.colorScheme.onSurface
-        )
-    }
-}
-
-private fun buildPayloadJsonString(payload: ConnectionDetails): String {
-    return org.json.JSONObject().apply {
-        put("ssid", payload.ssid)
-        put("token", payload.token)
-        if (payload.fileCount > 1) put("fileCount", payload.fileCount)
-    }.toString(2)
 }

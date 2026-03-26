@@ -15,16 +15,20 @@ import java.io.DataInputStream
 import java.io.DataOutputStream
 import java.io.InputStream
 import java.io.OutputStream
+import java.net.InetSocketAddress
 import java.net.ServerSocket
 import java.net.Socket
 
 private const val TAG = "TransferManager"
 
 /** Size of each read/write chunk in bytes. */
-private const val CHUNK_SIZE = 16 * 1024  // 16 KB
+private const val CHUNK_SIZE = 256 * 1024  // 256 KB
 
 /** Milliseconds to wait for an incoming client connection on the [ServerSocket]. */
 private const val SERVER_ACCEPT_TIMEOUT_MS = 30_000
+
+/** Socket buffer size for send/receive. */
+private const val SOCKET_BUFFER_SIZE = 512 * 1024  // 512 KB
 
 /**
  * A snapshot of the current file transfer state.
@@ -44,7 +48,9 @@ data class TransferProgress(
     val fileName: String? = null,
     val mimeType: String? = null,
     val fileIndex: Int = 0,
-    val totalFiles: Int = 1
+    val totalFiles: Int = 1,
+    val friendRequest: ProfileData? = null,
+    val friendProfile: ProfileData? = null
 ) {
     /**
      * Transfer progress as a fraction in the range [0, 1].
@@ -91,6 +97,41 @@ internal data class FileTransferHeader(
  */
 object TransferManager {
 
+    @Volatile
+    private var activeServerSocket: ServerSocket? = null
+
+    /**
+     * Force-closes any active server socket. Call before starting a new transfer
+     * to avoid EADDRINUSE errors from stale sockets after cancel + re-send.
+     */
+    fun cleanup() {
+        activeServerSocket?.let { socket ->
+            Log.d(TAG, "cleanup: closing active server socket")
+            runCatching { socket.close() }
+            activeServerSocket = null
+        }
+    }
+
+    /**
+     * Creates a [ServerSocket] with SO_REUSEADDR to avoid EADDRINUSE on rapid reuse.
+     */
+    private fun createServerSocket(port: Int): ServerSocket {
+        return ServerSocket().apply {
+            reuseAddress = true
+            bind(InetSocketAddress(port))
+            soTimeout = SERVER_ACCEPT_TIMEOUT_MS
+        }
+    }
+
+    /**
+     * Configures socket buffers and TCP_NODELAY for optimal transfer speed.
+     */
+    private fun Socket.configureForTransfer() {
+        sendBufferSize = SOCKET_BUFFER_SIZE
+        receiveBufferSize = SOCKET_BUFFER_SIZE
+        tcpNoDelay = true
+    }
+
     /**
      * **Sender side** — opens a [ServerSocket] on [port], accepts one client, sends
      * the file at [fileUri] from MediaStore, and emits [TransferProgress] updates.
@@ -105,18 +146,20 @@ object TransferManager {
             var serverSocket: ServerSocket? = null
             var clientSocket: Socket? = null
             try {
-                serverSocket = ServerSocket(port).apply { soTimeout = SERVER_ACCEPT_TIMEOUT_MS }
+                serverSocket = createServerSocket(port)
+                activeServerSocket = serverSocket
                 Log.d(TAG, "Listening on port $port (timeout=${SERVER_ACCEPT_TIMEOUT_MS}ms)")
                 send(TransferProgress())
 
                 clientSocket = serverSocket.accept()
+                clientSocket.configureForTransfer()
                 Log.d(TAG, "Client connected: ${clientSocket.inetAddress.hostAddress}")
 
                 val header = resolveFileHeader(context, fileUri)
                     ?: throw IllegalArgumentException("Cannot resolve file metadata for: $fileUri")
                 Log.d(TAG, "Sending — name=${header.name} size=${header.size} mime=${header.mimeType}")
 
-                val dataOut = DataOutputStream(clientSocket.getOutputStream().buffered())
+                val dataOut = DataOutputStream(clientSocket.getOutputStream().buffered(CHUNK_SIZE))
                 writeHeader(dataOut, header)
 
                 context.contentResolver.openInputStream(fileUri)?.use { inputStream ->
@@ -138,6 +181,7 @@ object TransferManager {
             } finally {
                 runCatching { clientSocket?.close() }
                 runCatching { serverSocket?.close() }
+                activeServerSocket = null
                 Log.d(TAG, "sendFile cleanup done")
             }
         }
@@ -162,10 +206,11 @@ object TransferManager {
             var socket: Socket? = null
             try {
                 socket = Socket(groupOwnerAddress, port)
+                socket.configureForTransfer()
                 Log.d(TAG, "Connected to $groupOwnerAddress:$port")
                 send(TransferProgress())
 
-                val dataIn = DataInputStream(socket.getInputStream().buffered())
+                val dataIn = DataInputStream(socket.getInputStream().buffered(CHUNK_SIZE))
                 val header = readHeader(dataIn)
                 Log.d(TAG, "Receiving — name=${header.name} size=${header.size} mime=${header.mimeType}")
 
@@ -214,14 +259,16 @@ object TransferManager {
             var serverSocket: ServerSocket? = null
             var clientSocket: Socket? = null
             try {
-                serverSocket = ServerSocket(port).apply { soTimeout = SERVER_ACCEPT_TIMEOUT_MS }
+                serverSocket = createServerSocket(port)
+                activeServerSocket = serverSocket
                 Log.d(TAG, "Listening on port $port for multi-file transfer")
                 send(TransferProgress(totalFiles = totalFiles))
 
                 clientSocket = serverSocket.accept()
+                clientSocket.configureForTransfer()
                 Log.d(TAG, "Client connected: ${clientSocket.inetAddress.hostAddress}")
 
-                val dataOut = DataOutputStream(clientSocket.getOutputStream().buffered())
+                val dataOut = DataOutputStream(clientSocket.getOutputStream().buffered(CHUNK_SIZE))
                 dataOut.writeInt(totalFiles)
                 dataOut.flush()
 
@@ -256,6 +303,7 @@ object TransferManager {
             } finally {
                 runCatching { clientSocket?.close() }
                 runCatching { serverSocket?.close() }
+                activeServerSocket = null
                 Log.d(TAG, "sendFiles cleanup done")
             }
         }
@@ -275,9 +323,10 @@ object TransferManager {
             var socket: Socket? = null
             try {
                 socket = Socket(groupOwnerAddress, port)
+                socket.configureForTransfer()
                 Log.d(TAG, "Connected to $groupOwnerAddress:$port")
 
-                val dataIn = DataInputStream(socket.getInputStream().buffered())
+                val dataIn = DataInputStream(socket.getInputStream().buffered(CHUNK_SIZE))
                 val totalFiles = dataIn.readInt()
                 Log.d(TAG, "Expecting $totalFiles files")
                 send(TransferProgress(totalFiles = totalFiles))
@@ -356,6 +405,7 @@ object TransferManager {
     /**
      * Pumps bytes from [source] to [destination] in [CHUNK_SIZE] chunks, calling
      * [onProgress] after each chunk with the running byte count.
+     * Progress is throttled to emit only when percentage changes (max 101 callbacks).
      *
      * @return Total bytes transferred.
      */
@@ -367,13 +417,18 @@ object TransferManager {
     ): Long {
         val buffer = ByteArray(CHUNK_SIZE)
         var bytesTransferred = 0L
+        var lastPct = -1
         while (bytesTransferred < totalSize) {
             val toRead = minOf(CHUNK_SIZE.toLong(), totalSize - bytesTransferred).toInt()
             val read = source.read(buffer, 0, toRead)
             if (read == -1) break
             destination.write(buffer, 0, read)
             bytesTransferred += read
-            onProgress(bytesTransferred)
+            val pct = if (totalSize > 0) ((bytesTransferred * 100) / totalSize).toInt() else 0
+            if (pct != lastPct) {
+                lastPct = pct
+                onProgress(bytesTransferred)
+            }
         }
         destination.flush()
         return bytesTransferred
@@ -405,6 +460,244 @@ object TransferManager {
         } catch (e: Exception) {
             Log.e(TAG, "Failed to resolve file header for $uri", e)
             null
+        }
+    }
+
+    // ─── Friend exchange variants ──────────────────────────────────────────
+
+    /**
+     * **Sender side** — sends files, then waits for optional friend request from receiver.
+     * If a friend request arrives, emits [TransferProgress.friendRequest] and waits
+     * for a decision via [friendDecision]. Responds with ACK + profile or NAK.
+     */
+    fun sendFilesWithFriendExchange(
+        context: Context,
+        fileUris: List<Uri>,
+        port: Int,
+        senderProfile: ProfileData?,
+        friendDecision: kotlinx.coroutines.CompletableDeferred<Boolean>?
+    ): Flow<TransferProgress> = channelFlow {
+        Log.d(TAG, "sendFilesWithFriendExchange: ${fileUris.size} files, port=$port")
+        val totalFiles = fileUris.size
+        withContext(Dispatchers.IO) {
+            var serverSocket: ServerSocket? = null
+            var clientSocket: Socket? = null
+            try {
+                serverSocket = createServerSocket(port)
+                activeServerSocket = serverSocket
+                send(TransferProgress(totalFiles = totalFiles))
+
+                clientSocket = serverSocket.accept()
+                clientSocket.configureForTransfer()
+                Log.d(TAG, "Client connected: ${clientSocket.inetAddress.hostAddress}")
+
+                val dataOut = DataOutputStream(clientSocket.getOutputStream().buffered(CHUNK_SIZE))
+
+                if (totalFiles > 1) {
+                    dataOut.writeInt(totalFiles)
+                    dataOut.flush()
+                }
+
+                for ((index, fileUri) in fileUris.withIndex()) {
+                    val header = resolveFileHeader(context, fileUri)
+                        ?: throw IllegalArgumentException("Cannot resolve file metadata for: $fileUri")
+
+                    writeHeader(dataOut, header)
+                    context.contentResolver.openInputStream(fileUri)?.use { inputStream ->
+                        streamBytes(
+                            source = inputStream,
+                            destination = dataOut,
+                            totalSize = header.size
+                        ) { transferred ->
+                            send(TransferProgress(transferred, header.size, fileIndex = index, totalFiles = totalFiles))
+                        }
+                        dataOut.flush()
+                    } ?: throw IllegalStateException("Cannot open InputStream for: $fileUri")
+
+                    if (index == totalFiles - 1) {
+                        send(TransferProgress(header.size, header.size, isComplete = true, fileName = header.name, mimeType = header.mimeType, fileIndex = index, totalFiles = totalFiles))
+                    } else {
+                        send(TransferProgress(header.size, header.size, fileName = header.name, mimeType = header.mimeType, fileIndex = index, totalFiles = totalFiles))
+                    }
+                }
+                Log.d(TAG, "All files sent, waiting for friend request...")
+
+                // Post-transfer: wait for optional friend request from receiver
+                try {
+                    clientSocket.soTimeout = 15_000
+                    val dataIn = DataInputStream(clientSocket.getInputStream().buffered(CHUNK_SIZE))
+                    val friendReq = readFriendRequest(dataIn)
+                    if (friendReq != null) {
+                        Log.d(TAG, "Friend request received from: ${friendReq.displayName}")
+                        send(TransferProgress(isComplete = true, friendRequest = friendReq))
+
+                        // Wait for user decision
+                        val accepted = try {
+                            kotlinx.coroutines.withTimeout(30_000) {
+                                friendDecision?.await() ?: false
+                            }
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Friend decision timeout or error", e)
+                            false
+                        }
+
+                        sendFriendResponse(dataOut, accepted, if (accepted) senderProfile else null)
+                        if (accepted && senderProfile != null) {
+                            send(TransferProgress(isComplete = true, friendProfile = friendReq))
+                        }
+                    }
+                } catch (e: java.net.SocketTimeoutException) {
+                    Log.d(TAG, "No friend request received (timeout)")
+                } catch (e: java.io.EOFException) {
+                    Log.d(TAG, "Receiver closed connection without friend request")
+                }
+
+            } catch (e: Exception) {
+                Log.e(TAG, "sendFilesWithFriendExchange error", e)
+                send(TransferProgress(error = e.message ?: "Send failed"))
+            } finally {
+                runCatching { clientSocket?.close() }
+                runCatching { serverSocket?.close() }
+                activeServerSocket = null
+            }
+        }
+    }
+
+    /**
+     * **Receiver side** — receives files, then optionally initiates friend exchange.
+     */
+    fun receiveFilesWithFriendExchange(
+        context: Context,
+        groupOwnerAddress: String,
+        port: Int,
+        fileCount: Int,
+        becomeFriends: Boolean,
+        localProfile: ProfileData?
+    ): Flow<TransferProgress> = channelFlow {
+        Log.d(TAG, "receiveFilesWithFriendExchange: host=$groupOwnerAddress fileCount=$fileCount becomeFriends=$becomeFriends")
+        withContext(Dispatchers.IO) {
+            var socket: Socket? = null
+            try {
+                socket = Socket(groupOwnerAddress, port)
+                socket.configureForTransfer()
+
+                val dataIn = DataInputStream(socket.getInputStream().buffered(CHUNK_SIZE))
+                val totalFiles = if (fileCount > 1) dataIn.readInt() else 1
+                send(TransferProgress(totalFiles = totalFiles))
+
+                for (index in 0 until totalFiles) {
+                    val header = readHeader(dataIn)
+
+                    val outputUri = insertMediaStoreEntry(context, header)
+                        ?: throw IllegalStateException("Failed to create MediaStore entry for: ${header.name}")
+
+                    context.contentResolver.openOutputStream(outputUri)?.use { outputStream ->
+                        streamBytes(
+                            source = dataIn,
+                            destination = outputStream,
+                            totalSize = header.size
+                        ) { transferred ->
+                            send(TransferProgress(transferred, header.size, fileIndex = index, totalFiles = totalFiles))
+                        }
+
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                            context.contentResolver.update(
+                                outputUri,
+                                ContentValues().apply { put(MediaStore.Downloads.IS_PENDING, 0) },
+                                null, null
+                            )
+                        }
+                    } ?: throw IllegalStateException("Cannot open OutputStream for: $outputUri")
+
+                    if (index == totalFiles - 1) {
+                        send(TransferProgress(header.size, header.size, isComplete = true, savedUri = outputUri, fileName = header.name, mimeType = header.mimeType, fileIndex = index, totalFiles = totalFiles))
+                    } else {
+                        send(TransferProgress(header.size, header.size, savedUri = outputUri, fileName = header.name, mimeType = header.mimeType, fileIndex = index, totalFiles = totalFiles))
+                    }
+                }
+
+                // Post-transfer: initiate friend exchange if requested
+                if (becomeFriends && localProfile != null) {
+                    Log.d(TAG, "Initiating friend exchange...")
+                    val dataOut = DataOutputStream(socket.getOutputStream().buffered(CHUNK_SIZE))
+                    sendFriendRequest(dataOut, localProfile)
+
+                    socket.soTimeout = 15_000
+                    val (accepted, senderProfile) = readFriendResponse(dataIn)
+                    if (accepted && senderProfile != null) {
+                        Log.d(TAG, "Friend exchange accepted by sender: ${senderProfile.displayName}")
+                        send(TransferProgress(isComplete = true, friendProfile = senderProfile))
+                    } else {
+                        Log.d(TAG, "Friend exchange declined by sender")
+                    }
+                }
+
+            } catch (e: Exception) {
+                Log.e(TAG, "receiveFilesWithFriendExchange error", e)
+                send(TransferProgress(error = e.message ?: "Receive failed"))
+            } finally {
+                runCatching { socket?.close() }
+            }
+        }
+    }
+
+    // ─── Profile transfer (NFC profile sharing) ─────────────────────────────
+
+    /**
+     * Sender side for profile sharing — opens a ServerSocket, sends profile data.
+     */
+    fun sendProfile(profileData: ProfileData, port: Int): Flow<TransferProgress> = channelFlow {
+        Log.d(TAG, "sendProfile: port=$port")
+        withContext(Dispatchers.IO) {
+            var serverSocket: ServerSocket? = null
+            var clientSocket: Socket? = null
+            try {
+                serverSocket = createServerSocket(port)
+                activeServerSocket = serverSocket
+                send(TransferProgress())
+
+                clientSocket = serverSocket.accept()
+                clientSocket.configureForTransfer()
+
+                val dataOut = DataOutputStream(clientSocket.getOutputStream().buffered(CHUNK_SIZE))
+                sendFriendRequest(dataOut, profileData)
+                send(TransferProgress(isComplete = true, friendProfile = profileData))
+
+            } catch (e: Exception) {
+                Log.e(TAG, "sendProfile error", e)
+                send(TransferProgress(error = e.message ?: "Profile send failed"))
+            } finally {
+                runCatching { clientSocket?.close() }
+                runCatching { serverSocket?.close() }
+                activeServerSocket = null
+            }
+        }
+    }
+
+    /**
+     * Receiver side for profile sharing — connects and reads profile data.
+     */
+    fun receiveProfile(groupOwnerAddress: String, port: Int): Flow<TransferProgress> = channelFlow {
+        Log.d(TAG, "receiveProfile: host=$groupOwnerAddress port=$port")
+        withContext(Dispatchers.IO) {
+            var socket: Socket? = null
+            try {
+                socket = Socket(groupOwnerAddress, port)
+                socket.configureForTransfer()
+
+                val dataIn = DataInputStream(socket.getInputStream().buffered(CHUNK_SIZE))
+                val profile = readFriendRequest(dataIn)
+                if (profile != null) {
+                    send(TransferProgress(isComplete = true, friendProfile = profile))
+                } else {
+                    send(TransferProgress(error = "Failed to read profile data"))
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "receiveProfile error", e)
+                send(TransferProgress(error = e.message ?: "Profile receive failed"))
+            } finally {
+                runCatching { socket?.close() }
+            }
         }
     }
 

@@ -21,14 +21,19 @@ import com.shashsam.boop.utils.toFormattedSize
 import com.shashsam.boop.wifi.GROUP_OWNER_IP
 import com.shashsam.boop.wifi.WifiDirectManager
 import com.shashsam.boop.wifi.WifiDirectState
+import com.shashsam.boop.transfer.ProfileData
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
+import java.io.File
 
 private const val TAG = "TransferViewModel"
 
@@ -80,7 +85,12 @@ data class TransferUiState(
     val currentFileIndex: Int = 0,
     val totalFiles: Int = 1,
     val pendingFileUris: List<Uri> = emptyList(),
-    val pendingApproval: ConnectionDetails? = null
+    val pendingApproval: ConnectionDetails? = null,
+    val isResetting: Boolean = false,
+    val pendingFriendRequest: com.shashsam.boop.transfer.ProfileData? = null,
+    val friendExchangeComplete: Boolean = false,
+    val isProfileShareMode: Boolean = false,
+    val receivedProfile: com.shashsam.boop.transfer.ProfileData? = null
 )
 
 /**
@@ -114,11 +124,21 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
     private val settingsPrefs = application.getSharedPreferences("boop_settings", android.content.Context.MODE_PRIVATE)
 
     private var currentConnectionSsid: String? = null
+    private var currentConnectionDisplayName: String? = null
+    private var pendingBefriend: Boolean = false
+    private var friendDecisionDeferred: CompletableDeferred<Boolean>? = null
+
+    private val _selectedFriend = MutableStateFlow<FriendEntity?>(null)
+    val selectedFriend: StateFlow<FriendEntity?> = _selectedFriend.asStateFlow()
 
     private val _uiState = MutableStateFlow(TransferUiState())
 
     /** Observable UI state for the home screen. */
     val uiState: StateFlow<TransferUiState> = _uiState.asStateFlow()
+
+    /** Observable friends list for the profile screen. */
+    val friends: StateFlow<List<FriendEntity>> = friendDao.getAll()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     private var transferJob: Job? = null
 
@@ -210,6 +230,7 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
     fun prepareSend() {
         Log.d(TAG, "prepareSend()")
         BoopHceService.connectionFileCount = 1
+        BoopHceService.connectionDisplayName = settingsPrefs.getString("display_name", "") ?: ""
         _uiState.update {
             it.copy(isSendMode = true, isReceiveMode = false, error = null, transferComplete = false)
         }
@@ -232,6 +253,7 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
      */
     fun startSending(fileUri: Uri) {
         Log.d(TAG, "startSending: $fileUri")
+        TransferManager.cleanup()
         val context = getApplication<Application>()
         // Take persistable URI permission so the sender file URI survives in history
         try {
@@ -272,6 +294,7 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
             return
         }
         Log.d(TAG, "startSendingMultiple: ${fileUris.size} files")
+        TransferManager.cleanup()
         val context = getApplication<Application>()
         // Take persistable URI permissions for all files
         fileUris.forEach { uri ->
@@ -333,10 +356,6 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
                 appendLog("✅ File ${progress.fileIndex + 1}/${progress.totalFiles}: ${progress.fileName}")
 
                 if (progress.isComplete) {
-                    // Save friend on receiver side
-                    if (!currentState.isSendMode) {
-                        saveFriendIfNeeded(currentConnectionSsid)
-                    }
                     // Last file — mark transfer as done
                     _uiState.update { state ->
                         state.copy(
@@ -416,14 +435,29 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
             Log.d(TAG, "onNfcPayloadReceived ignored — device is in Send mode")
             return
         }
+        // Guard against NFC payloads arriving during reset cycle
+        if (current.isResetting) {
+            Log.d(TAG, "onNfcPayloadReceived ignored — device is resetting")
+            return
+        }
         // Guard against duplicate callbacks (reader mode + foreground dispatch fire for the same tap)
         if (current.isWifiConnecting || current.isWifiConnected || current.isTransferring) {
             Log.d(TAG, "onNfcPayloadReceived ignored — already in progress (connecting=${current.isWifiConnecting} connected=${current.isWifiConnected} transferring=${current.isTransferring})")
             return
         }
-        Log.d(TAG, "onNfcPayloadReceived: mac=${details.mac} port=${details.port} ssid=${details.ssid} token=${details.token}")
-        appendLog("📲 NFC tap! Sender MAC=${details.mac} Port=${details.port}")
+        Log.d(TAG, "onNfcPayloadReceived: mac=${details.mac} port=${details.port} ssid=${details.ssid} token=${details.token} type=${details.type}")
         currentConnectionSsid = details.ssid
+        currentConnectionDisplayName = details.displayName.takeIf { it.isNotBlank() }
+
+        // Handle profile share type
+        if (details.type == "profile") {
+            appendLog("📲 NFC tap! Receiving profile...")
+            _uiState.update { it.copy(isNfcReading = false, receivedPayload = details) }
+            proceedWithProfileReceive(details)
+            return
+        }
+
+        appendLog("📲 NFC tap! Sender MAC=${details.mac} Port=${details.port}")
         _uiState.update { it.copy(isNfcReading = false, receivedPayload = details) }
 
         // Check receive permission setting
@@ -440,9 +474,10 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    fun approveIncomingTransfer() {
+    fun approveIncomingTransfer(becomeFriends: Boolean = false) {
         val details = _uiState.value.pendingApproval ?: return
-        Log.d(TAG, "approveIncomingTransfer")
+        Log.d(TAG, "approveIncomingTransfer becomeFriends=$becomeFriends")
+        pendingBefriend = becomeFriends
         _uiState.update { it.copy(pendingApproval = null) }
         proceedWithReceive(details)
     }
@@ -451,6 +486,7 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
         Log.d(TAG, "rejectIncomingTransfer")
         _uiState.update { it.copy(pendingApproval = null, receivedPayload = null) }
         currentConnectionSsid = null
+        currentConnectionDisplayName = null
         prepareReceive()
     }
 
@@ -507,7 +543,23 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
                     totalFiles = details.fileCount
                 )
             }
-            if (details.fileCount > 1) {
+            if (pendingBefriend) {
+                val localProfile = buildLocalProfile()
+                TransferManager.receiveFilesWithFriendExchange(
+                    context, GROUP_OWNER_IP, details.port,
+                    fileCount = details.fileCount,
+                    becomeFriends = true,
+                    localProfile = localProfile
+                ).collect { progress ->
+                    if (progress.friendProfile != null) {
+                        handleFriendProfileReceived(progress.friendProfile)
+                    } else if (details.fileCount > 1) {
+                        handleMultiFileProgress(progress)
+                    } else {
+                        handleTransferProgress(progress)
+                    }
+                }
+            } else if (details.fileCount > 1) {
                 TransferManager.receiveFiles(context, GROUP_OWNER_IP, details.port)
                     .collect { progress -> handleMultiFileProgress(progress) }
             } else {
@@ -521,21 +573,213 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
 
     private fun saveFriendIfNeeded(ssid: String?) {
         if (ssid.isNullOrBlank()) return
+        val resolvedName = currentConnectionDisplayName
+            ?: Regex("^DIRECT-[a-zA-Z0-9]{2}-(.+)$").find(ssid)?.groupValues?.get(1)
+            ?: ssid
         viewModelScope.launch {
             val existing = friendDao.getBySsid(ssid)
             if (existing != null) {
                 friendDao.updateLastSeen(ssid, System.currentTimeMillis())
+                // Update display name if sender changed it
+                if (existing.displayName != resolvedName) {
+                    friendDao.updateDisplayName(ssid, resolvedName)
+                }
             } else {
-                val name = Regex("^DIRECT-[a-zA-Z0-9]{2}-(.+)$").find(ssid)?.groupValues?.get(1) ?: ssid
                 friendDao.insert(
                     FriendEntity(
                         ssid = ssid,
-                        displayName = name,
+                        displayName = resolvedName,
                         firstSeenTimestamp = System.currentTimeMillis(),
                         lastSeenTimestamp = System.currentTimeMillis()
                     )
                 )
             }
+        }
+    }
+
+    // ─── Friend exchange ──────────────────────────────────────────────────────
+
+    fun acceptFriendRequest() {
+        Log.d(TAG, "acceptFriendRequest")
+        val profile = _uiState.value.pendingFriendRequest
+        friendDecisionDeferred?.complete(true)
+        friendDecisionDeferred = null
+        if (profile != null) {
+            handleFriendProfileReceived(profile)
+        }
+        _uiState.update { it.copy(pendingFriendRequest = null, friendExchangeComplete = true) }
+    }
+
+    fun rejectFriendRequest() {
+        Log.d(TAG, "rejectFriendRequest")
+        friendDecisionDeferred?.complete(false)
+        friendDecisionDeferred = null
+        _uiState.update { it.copy(pendingFriendRequest = null) }
+    }
+
+    private fun handleFriendProfileReceived(profile: ProfileData) {
+        val ssid = currentConnectionSsid ?: return
+        Log.d(TAG, "handleFriendProfileReceived: ${profile.displayName}")
+        viewModelScope.launch {
+            // Save profile pic if present
+            var picPath: String? = null
+            if (profile.profilePicBytes != null) {
+                try {
+                    val context = getApplication<Application>()
+                    val picsDir = File(context.filesDir, "friend_pics")
+                    picsDir.mkdirs()
+                    val picFile = File(picsDir, "${ssid.hashCode()}.jpg")
+                    picFile.writeBytes(profile.profilePicBytes)
+                    picPath = picFile.absolutePath
+                    Log.d(TAG, "Friend pic saved: $picPath")
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to save friend pic", e)
+                }
+            }
+
+            // Save/update friend in Room
+            friendDao.insertOrUpdate(
+                FriendEntity(
+                    ssid = ssid,
+                    displayName = profile.displayName,
+                    firstSeenTimestamp = System.currentTimeMillis(),
+                    lastSeenTimestamp = System.currentTimeMillis(),
+                    profileJson = profile.profileItemsJson.takeIf { it.isNotBlank() },
+                    profilePicPath = picPath
+                )
+            )
+        }
+    }
+
+    private fun buildLocalProfile(): ProfileData {
+        val displayName = settingsPrefs.getString("display_name", "") ?: ""
+        val profilePicPath = settingsPrefs.getString("profile_pic_path", null)
+        val picBytes = profilePicPath?.let { path ->
+            try {
+                File(path).takeIf { it.exists() }?.readBytes()
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to read profile pic", e)
+                null
+            }
+        }
+        // We don't have access to ProfileViewModel's items here, so read from DB directly
+        return ProfileData(
+            displayName = displayName,
+            profileItemsJson = "", // Will be set by caller if available
+            profilePicBytes = picBytes
+        )
+    }
+
+    // ─── Profile sharing via NFC ──────────────────────────────────────────
+
+    fun prepareProfileShare() {
+        Log.d(TAG, "prepareProfileShare()")
+        BoopHceService.connectionType = "profile"
+        BoopHceService.connectionFileCount = 0
+        BoopHceService.connectionDisplayName = settingsPrefs.getString("display_name", "") ?: ""
+        _uiState.update {
+            it.copy(
+                isProfileShareMode = true,
+                isSendMode = true,
+                isReceiveMode = false,
+                error = null,
+                transferComplete = false
+            )
+        }
+        viewModelScope.launch {
+            val ok = wifiDirectManager.createGroup()
+            if (!ok) {
+                appendLog("❌ Failed to create Wi-Fi Direct group for profile share.", isError = true)
+                _uiState.update { it.copy(isProfileShareMode = false) }
+            }
+        }
+    }
+
+    fun cancelProfileShare() {
+        Log.d(TAG, "cancelProfileShare()")
+        BoopHceService.connectionType = "file"
+        _uiState.update { it.copy(isProfileShareMode = false) }
+        resetToReceive()
+    }
+
+    fun startProfileSend(profileData: ProfileData) {
+        Log.d(TAG, "startProfileSend")
+        TransferManager.cleanup()
+        transferJob?.cancel()
+        transferJob = viewModelScope.launch {
+            TransferManager.sendProfile(profileData, BoopHceService.DEFAULT_PORT)
+                .collect { progress ->
+                    if (progress.error != null) {
+                        _uiState.update { it.copy(error = progress.error, isProfileShareMode = false) }
+                    } else if (progress.isComplete) {
+                        appendLog("✅ Profile shared successfully!")
+                        _uiState.update { it.copy(isProfileShareMode = false, transferComplete = true) }
+                    }
+                }
+        }
+    }
+
+    fun proceedWithProfileReceive(details: ConnectionDetails) {
+        Log.d(TAG, "proceedWithProfileReceive")
+        val context = getApplication<Application>()
+        transferJob?.cancel()
+        transferJob = viewModelScope.launch {
+            val queued = wifiDirectManager.connect(details.ssid, details.token, details.mac)
+            if (!queued) {
+                _uiState.update { it.copy(error = "Wi-Fi Direct connection rejected.") }
+                return@launch
+            }
+
+            val result = withTimeoutOrNull(CONNECTION_TIMEOUT_MS) {
+                wifiDirectManager.state.first { state ->
+                    state is WifiDirectState.Connected || state is WifiDirectState.Error
+                }
+            }
+
+            when {
+                result == null -> {
+                    wifiDirectManager.disconnect()
+                    _uiState.update { it.copy(error = "Connection timed out.") }
+                    return@launch
+                }
+                result is WifiDirectState.Error -> return@launch
+            }
+
+            TransferManager.receiveProfile(GROUP_OWNER_IP, details.port)
+                .collect { progress ->
+                    if (progress.error != null) {
+                        _uiState.update { it.copy(error = progress.error) }
+                    } else if (progress.friendProfile != null) {
+                        _uiState.update { it.copy(receivedProfile = progress.friendProfile) }
+                    }
+                }
+        }
+    }
+
+    fun saveReceivedProfileAsFriend() {
+        val profile = _uiState.value.receivedProfile ?: return
+        val ssid = currentConnectionSsid ?: return
+        Log.d(TAG, "saveReceivedProfileAsFriend: ${profile.displayName}")
+        handleFriendProfileReceived(profile)
+        _uiState.update { it.copy(receivedProfile = null) }
+    }
+
+    fun dismissReceivedProfile() {
+        _uiState.update { it.copy(receivedProfile = null) }
+    }
+
+    // ─── Friend selection ─────────────────────────────────────────────────
+
+    fun selectFriend(id: Long) {
+        viewModelScope.launch {
+            _selectedFriend.value = friendDao.getById(id)
+        }
+    }
+
+    fun removeFriend(id: Long) {
+        viewModelScope.launch {
+            friendDao.deleteById(id)
+            _selectedFriend.value = null
         }
     }
 
@@ -559,10 +803,6 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
                             (progress.savedUri?.let { " → Saved to Downloads" } ?: "")
                 )
                 val currentState = _uiState.value
-                // Save friend on receiver side
-                if (!currentState.isSendMode) {
-                    saveFriendIfNeeded(currentConnectionSsid)
-                }
                 // For sender, use the original file URI; for receiver, use the saved URI
                 val historyUri = if (currentState.isSendMode) {
                     currentState.senderFileUri?.toString()
@@ -669,25 +909,42 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
     /** Resets the entire transfer state back to idle. */
     fun reset() {
         transferJob?.cancel()
+        TransferManager.cleanup()
         currentConnectionSsid = null
+        currentConnectionDisplayName = null
+        pendingBefriend = false
+        friendDecisionDeferred?.complete(false)
+        friendDecisionDeferred = null
+        BoopHceService.connectionType = "file"
         val recent = _uiState.value.recentTransfers
-        _uiState.value = TransferUiState(recentTransfers = recent)
-        viewModelScope.launch { wifiDirectManager.reset() }
-        Log.d(TAG, "State reset to Idle")
+        _uiState.value = TransferUiState(recentTransfers = recent, isResetting = true)
+        viewModelScope.launch {
+            wifiDirectManager.reset()
+            _uiState.update { it.copy(isResetting = false) }
+            Log.d(TAG, "State reset to Idle")
+        }
     }
 
     /** Resets state and re-arms receive mode so the next NFC tap works immediately. */
     fun resetToReceive() {
         transferJob?.cancel()
+        TransferManager.cleanup()
         currentConnectionSsid = null
+        currentConnectionDisplayName = null
+        pendingBefriend = false
+        friendDecisionDeferred?.complete(false)
+        friendDecisionDeferred = null
+        BoopHceService.connectionType = "file"
         val recent = _uiState.value.recentTransfers
         _uiState.value = TransferUiState(
             recentTransfers = recent,
-            isReceiveMode = true,
-            isNfcReading = true
+            isResetting = true
         )
-        viewModelScope.launch { wifiDirectManager.reset() }
-        Log.d(TAG, "State reset to Receive mode")
+        viewModelScope.launch {
+            wifiDirectManager.reset()
+            _uiState.update { it.copy(isResetting = false, isReceiveMode = true, isNfcReading = true) }
+            Log.d(TAG, "State reset to Receive mode")
+        }
     }
 
     override fun onCleared() {
