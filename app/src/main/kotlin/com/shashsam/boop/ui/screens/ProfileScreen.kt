@@ -1,84 +1,495 @@
 package com.shashsam.boop.ui.screens
 
+import android.net.Uri
+import android.os.Build
 import android.util.Log
-import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Person
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Group
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.PersonOff
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import com.shashsam.boop.ui.theme.BoopTheme
+import coil.compose.AsyncImage
+import com.shashsam.boop.data.FriendEntity
+import com.shashsam.boop.data.ProfileItemEntity
+import com.shashsam.boop.ui.components.BentoGrid
+import com.shashsam.boop.ui.components.ProfileItemDialog
+import com.shashsam.boop.ui.theme.BoopBrandPurple
+import com.shashsam.boop.ui.theme.BoopShapeMedium
+import com.shashsam.boop.ui.theme.GlassCard
+import com.shashsam.boop.ui.theme.LocalBoopTokens
+import com.shashsam.boop.ui.theme.NeoBrutalistButton
+import com.shashsam.boop.ui.viewmodels.SettingsUiState
+import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 private const val TAG = "ProfileScreen"
 
-/**
- * Stub screen for the Profile tab.
- *
- * Displays a centered placeholder with a person icon and instructional text.
- * Styled to match the dark geometric / neo-brutalist Boop design system.
- *
- * @param modifier Modifier for the root container.
- */
 @Composable
-fun ProfileScreen(modifier: Modifier = Modifier) {
-    Log.d(TAG, "ProfileScreen composed")
+fun ProfileScreen(
+    settingsState: SettingsUiState,
+    friends: List<FriendEntity>,
+    profileItems: List<ProfileItemEntity>,
+    profilePicPath: String?,
+    onSettingsClick: () -> Unit = {},
+    onDisplayNameChange: (String) -> Unit = {},
+    onProfilePicPick: (Uri) -> Unit = {},
+    onAddItem: (type: String, label: String, value: String, size: String) -> Unit = { _, _, _, _ -> },
+    onEditItem: (ProfileItemEntity) -> Unit = {},
+    onDeleteItem: (Long) -> Unit = {},
+    onReorderItems: (List<ProfileItemEntity>) -> Unit = {},
+    onFriendClick: (FriendEntity) -> Unit = {},
+    onShareProfileClick: () -> Unit = {},
+    modifier: Modifier = Modifier
+) {
+    Log.d(TAG, "ProfileScreen composed — friends=${friends.size} items=${profileItems.size}")
 
-    Column(
+    val tokens = LocalBoopTokens.current
+    val deviceName = "${Build.MANUFACTURER.replaceFirstChar { it.uppercase() }} ${Build.MODEL}"
+    var showNameDialog by remember { mutableStateOf(false) }
+    var showAddDialog by remember { mutableStateOf(false) }
+    var editingItem by remember { mutableStateOf<ProfileItemEntity?>(null) }
+
+    LazyColumn(
         modifier = modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
+            .padding(horizontal = 20.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
-        // ── Icon ─────────────────────────────────────────────────────────
-        Icon(
-            imageVector = Icons.Outlined.Person,
-            contentDescription = "Profile",
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.size(64.dp)
+        // ── Header ──────────────────────────────────────────────────────────
+        item {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Profile",
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = MaterialTheme.colorScheme.onBackground,
+                    modifier = Modifier.weight(1f)
+                )
+                IconButton(onClick = onSettingsClick) {
+                    Icon(
+                        imageVector = Icons.Filled.Settings,
+                        contentDescription = "Settings",
+                        tint = MaterialTheme.colorScheme.onBackground,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+            }
+        }
+
+        // ── Profile card ─────────────────────────────────────────────────
+        item {
+            GlassCard(modifier = Modifier.fillMaxWidth()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    // Profile pic
+                    val picFile = profilePicPath?.let { File(it) }
+                    if (picFile != null && picFile.exists()) {
+                        AsyncImage(
+                            model = picFile,
+                            contentDescription = "Profile picture",
+                            modifier = Modifier
+                                .size(56.dp)
+                                .clip(CircleShape)
+                                .clickable { /* photo picker handled by caller */ },
+                            contentScale = ContentScale.Crop
+                        )
+                    } else {
+                        Icon(
+                            imageVector = Icons.Filled.Person,
+                            contentDescription = null,
+                            tint = tokens.accent,
+                            modifier = Modifier.size(56.dp)
+                        )
+                    }
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = settingsState.displayName,
+                            style = MaterialTheme.typography.headlineMedium,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = MaterialTheme.colorScheme.onBackground,
+                            modifier = Modifier.clickable { showNameDialog = true }
+                        )
+                        Text(
+                            text = deviceName,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = tokens.textSecondary
+                        )
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(12.dp))
+        }
+
+        // ── Share Profile button ─────────────────────────────────────────
+        item {
+            GlassCard(modifier = Modifier.fillMaxWidth()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(onClick = onShareProfileClick)
+                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Share,
+                        contentDescription = null,
+                        tint = tokens.accent,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Text(
+                        text = "Share Profile via NFC",
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onBackground,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Icon(
+                        imageVector = Icons.Filled.ChevronRight,
+                        contentDescription = null,
+                        tint = tokens.textTertiary,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(20.dp))
+        }
+
+        // ── Bento section ────────────────────────────────────────────────
+        item {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    text = "Links",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = MaterialTheme.colorScheme.onBackground,
+                    modifier = Modifier.weight(1f)
+                )
+                IconButton(
+                    onClick = { showAddDialog = true },
+                    enabled = profileItems.size < 6
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Add,
+                        contentDescription = "Add link",
+                        tint = if (profileItems.size < 6) tokens.accent else tokens.textTertiary,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+            }
+        }
+
+        if (profileItems.isNotEmpty()) {
+            item {
+                BentoGrid(
+                    items = profileItems,
+                    isEditable = true,
+                    onItemClick = {},
+                    onEditItem = { editingItem = it },
+                    onDeleteItem = onDeleteItem
+                )
+                Spacer(modifier = Modifier.height(20.dp))
+            }
+        }
+
+        // ── Friends section ─────────────────────────────────────────────
+        item {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Group,
+                    contentDescription = null,
+                    tint = tokens.accent,
+                    modifier = Modifier.size(24.dp)
+                )
+                Text(
+                    text = "Friends",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = MaterialTheme.colorScheme.onBackground
+                )
+                Text(
+                    text = "${friends.size}",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = tokens.textSecondary
+                )
+            }
+        }
+
+        if (friends.isEmpty()) {
+            item {
+                GlassCard(modifier = Modifier.fillMaxWidth()) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(32.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.PersonOff,
+                            contentDescription = null,
+                            tint = tokens.textSecondary,
+                            modifier = Modifier.size(40.dp)
+                        )
+                        Text(
+                            text = "No friends yet",
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = tokens.textSecondary,
+                            textAlign = TextAlign.Center
+                        )
+                        Text(
+                            text = "Tap 'Accept + Become Friends' when receiving files to add friends",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = tokens.textSecondary,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
+            }
+        } else {
+            items(friends, key = { it.id }) { friend ->
+                FriendCard(
+                    friend = friend,
+                    onClick = { onFriendClick(friend) }
+                )
+            }
+        }
+
+        item {
+            Spacer(modifier = Modifier.height(16.dp))
+        }
+    }
+
+    // ── Display name dialog ──────────────────────────────────────────────
+    if (showNameDialog) {
+        DisplayNameDialog(
+            currentName = settingsState.displayName,
+            onConfirm = { newName ->
+                onDisplayNameChange(newName)
+                showNameDialog = false
+            },
+            onDismiss = { showNameDialog = false }
         )
+    }
 
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // ── Title ────────────────────────────────────────────────────────
-        Text(
-            text = "Profile",
-            style = MaterialTheme.typography.headlineMedium,
-            fontWeight = FontWeight.ExtraBold,
-            color = MaterialTheme.colorScheme.onBackground
+    // ── Add profile item dialog ──────────────────────────────────────────
+    if (showAddDialog) {
+        ProfileItemDialog(
+            onSave = { type, label, value, size ->
+                onAddItem(type, label, value, size)
+                showAddDialog = false
+            },
+            onDismiss = { showAddDialog = false }
         )
+    }
 
-        Spacer(modifier = Modifier.height(8.dp))
-
-        // ── Body text ────────────────────────────────────────────────────
-        Text(
-            text = "Device info and preferences",
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.Center
+    // ── Edit profile item dialog ─────────────────────────────────────────
+    editingItem?.let { item ->
+        ProfileItemDialog(
+            existingItem = item,
+            onSave = { type, label, value, size ->
+                onEditItem(item.copy(type = type, label = label, value = value, size = size))
+                editingItem = null
+            },
+            onDismiss = { editingItem = null }
         )
     }
 }
 
-// ─── Preview ─────────────────────────────────────────────────────────────────
+// ─── Display Name Dialog ────────────────────────────────────────────────────
 
-@Preview(showBackground = true, backgroundColor = 0xFF000000)
 @Composable
-private fun ProfileScreenPreview() {
-    BoopTheme(darkTheme = true) {
-        ProfileScreen()
+private fun DisplayNameDialog(
+    currentName: String,
+    onConfirm: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var nameText by remember { mutableStateOf(currentName) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        shape = BoopShapeMedium,
+        containerColor = MaterialTheme.colorScheme.surface,
+        icon = {
+            Icon(
+                imageVector = Icons.Filled.Person,
+                contentDescription = null,
+                tint = BoopBrandPurple,
+                modifier = Modifier.size(28.dp)
+            )
+        },
+        title = {
+            Text(
+                text = "Edit Display Name",
+                fontWeight = FontWeight.ExtraBold
+            )
+        },
+        text = {
+            OutlinedTextField(
+                value = nameText,
+                onValueChange = { nameText = it },
+                singleLine = true,
+                label = { Text("Display Name") },
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = BoopBrandPurple,
+                    cursorColor = BoopBrandPurple,
+                    focusedLabelColor = BoopBrandPurple
+                ),
+                modifier = Modifier.fillMaxWidth()
+            )
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    val trimmed = nameText.trim()
+                    if (trimmed.isNotEmpty()) {
+                        onConfirm(trimmed)
+                    }
+                }
+            ) {
+                Text(
+                    text = "Save",
+                    fontWeight = FontWeight.Bold,
+                    color = BoopBrandPurple
+                )
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(
+                    text = "Cancel",
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    )
+}
+
+// ─── Friend Card ────────────────────────────────────────────────────────────
+
+@Composable
+private fun FriendCard(
+    friend: FriendEntity,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val tokens = LocalBoopTokens.current
+    val dateFormat = SimpleDateFormat("MMM d, yyyy", Locale.getDefault())
+
+    GlassCard(
+        modifier = modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Friend profile pic or fallback
+            val picFile = friend.profilePicPath?.let { File(it) }
+            if (picFile != null && picFile.exists()) {
+                AsyncImage(
+                    model = picFile,
+                    contentDescription = null,
+                    modifier = Modifier
+                        .size(32.dp)
+                        .clip(CircleShape),
+                    contentScale = ContentScale.Crop
+                )
+            } else {
+                Icon(
+                    imageVector = Icons.Filled.Person,
+                    contentDescription = null,
+                    tint = tokens.accent,
+                    modifier = Modifier.size(32.dp)
+                )
+            }
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = friend.displayName,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onBackground
+                )
+                Text(
+                    text = "${friend.transferCount} transfer${if (friend.transferCount != 1) "s" else ""} · Last seen ${dateFormat.format(Date(friend.lastSeenTimestamp))}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = tokens.textSecondary
+                )
+            }
+            Icon(
+                imageVector = Icons.Filled.ChevronRight,
+                contentDescription = "View profile",
+                tint = tokens.textTertiary,
+                modifier = Modifier.size(16.dp)
+            )
+        }
     }
 }

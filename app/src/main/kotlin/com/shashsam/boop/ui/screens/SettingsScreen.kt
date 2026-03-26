@@ -5,6 +5,7 @@ import android.net.Uri
 import android.util.Log
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -23,9 +24,8 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.LocalCafe
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Notifications
-import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Vibration
 import androidx.compose.material.icons.filled.VolumeUp
@@ -35,8 +35,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Switch
@@ -85,7 +83,6 @@ fun SettingsScreen(
     onNotificationsToggle: (Boolean) -> Unit,
     onVibrationToggle: (Boolean) -> Unit,
     onSoundToggle: (Boolean) -> Unit,
-    onDisplayNameChange: (String) -> Unit,
     onDarkModeToggle: (Boolean) -> Unit,
     onReceivePermissionChange: (String) -> Unit,
     modifier: Modifier = Modifier
@@ -95,7 +92,6 @@ fun SettingsScreen(
     val tokens = LocalBoopTokens.current
     val haptics = rememberBoopHaptics()
     val context = LocalContext.current
-    var showNameDialog by remember { mutableStateOf(false) }
     var showPermissionDialog by remember { mutableStateOf(false) }
 
     Column(
@@ -139,6 +135,72 @@ fun SettingsScreen(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
+            // ── About section ────────────────────────────────────────────────
+            GlassCard(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Info,
+                            contentDescription = null,
+                            tint = tokens.accent,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Column {
+                            Text(
+                                text = "Boop",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = MaterialTheme.colorScheme.onBackground
+                            )
+                            Text(
+                                text = "P2P file sharing via NFC + Wi-Fi Direct",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = tokens.textSecondary
+                            )
+                        }
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(end = 6.dp, bottom = 6.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        NeoBrutalistButton(
+                            onClick = {
+                                try {
+                                    val upiUri = Uri.parse("upi://pay?pa=03.shubhamshah-1@oksbi&pn=Boop&tn=Buy%20me%20a%20Chai&cu=INR")
+                                    context.startActivity(Intent(Intent.ACTION_VIEW, upiUri))
+                                } catch (e: Exception) {
+                                    Log.w(TAG, "No UPI app available", e)
+                                }
+                            }
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Favorite,
+                                contentDescription = null,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "Buy me a Chai",
+                                fontWeight = FontWeight.ExtraBold
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
             // Notifications
             SettingsToggleRow(
                 icon = Icons.Filled.Notifications,
@@ -195,19 +257,6 @@ fun SettingsScreen(
 
             SettingsDivider()
 
-            // Identity
-            SettingsNavigationRow(
-                icon = Icons.Filled.Person,
-                label = "Identity",
-                value = settingsState.displayName,
-                onClick = {
-                    Log.d(TAG, "Identity row clicked")
-                    showNameDialog = true
-                }
-            )
-
-            SettingsDivider()
-
             // Receive Permission
             SettingsNavigationRow(
                 icon = Icons.Filled.Shield,
@@ -219,66 +268,6 @@ fun SettingsScreen(
                 }
             )
 
-            Spacer(modifier = Modifier.height(24.dp))
-
-            // ── About section ────────────────────────────────────────────────
-            GlassCard(modifier = Modifier.fillMaxWidth()) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.Info,
-                            contentDescription = null,
-                            tint = tokens.accent,
-                            modifier = Modifier.size(24.dp)
-                        )
-                        Column {
-                            Text(
-                                text = "Boop",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = MaterialTheme.colorScheme.onBackground
-                            )
-                            Text(
-                                text = "P2P file sharing via NFC + Wi-Fi Direct",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = tokens.textSecondary
-                            )
-                        }
-                    }
-
-                    NeoBrutalistButton(
-                        onClick = {
-                            try {
-                                val upiUri = Uri.parse("upi://pay?pa=03.shubhamshah-1@oksbi&pn=Boop&tn=Buy%20me%20a%20Chai&cu=INR")
-                                context.startActivity(Intent(Intent.ACTION_VIEW, upiUri))
-                            } catch (e: Exception) {
-                                Log.w(TAG, "No UPI app available", e)
-                            }
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.LocalCafe,
-                            contentDescription = null,
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "Buy me a Chai",
-                            fontWeight = FontWeight.ExtraBold
-                        )
-                    }
-                }
-            }
-
             Spacer(modifier = Modifier.height(8.dp))
 
             // ── Warning card ────────────────────────────────────────────────
@@ -286,19 +275,6 @@ fun SettingsScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
         }
-    }
-
-    // ── Display name edit dialog ────────────────────────────────────────────
-    if (showNameDialog) {
-        DisplayNameDialog(
-            currentName = settingsState.displayName,
-            onConfirm = { newName ->
-                Log.d(TAG, "Display name changed to=$newName")
-                onDisplayNameChange(newName)
-                showNameDialog = false
-            },
-            onDismiss = { showNameDialog = false }
-        )
     }
 
     // ── Receive permission dialog ───────────────────────────────────────────
@@ -465,76 +441,6 @@ private fun PermissionsWarningCard(modifier: Modifier = Modifier) {
     }
 }
 
-// ─── Display Name Dialog ────────────────────────────────────────────────────
-
-@Composable
-private fun DisplayNameDialog(
-    currentName: String,
-    onConfirm: (String) -> Unit,
-    onDismiss: () -> Unit
-) {
-    var nameText by remember { mutableStateOf(currentName) }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        shape = BoopShapeMedium,
-        containerColor = MaterialTheme.colorScheme.surface,
-        icon = {
-            Icon(
-                imageVector = Icons.Filled.Person,
-                contentDescription = null,
-                tint = BoopBrandPurple,
-                modifier = Modifier.size(28.dp)
-            )
-        },
-        title = {
-            Text(
-                text = "Edit Display Name",
-                fontWeight = FontWeight.ExtraBold
-            )
-        },
-        text = {
-            OutlinedTextField(
-                value = nameText,
-                onValueChange = { nameText = it },
-                singleLine = true,
-                label = { Text("Display Name") },
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = BoopBrandPurple,
-                    cursorColor = BoopBrandPurple,
-                    focusedLabelColor = BoopBrandPurple
-                ),
-                modifier = Modifier.fillMaxWidth()
-            )
-        },
-        confirmButton = {
-            TextButton(
-                onClick = {
-                    val trimmed = nameText.trim()
-                    if (trimmed.isNotEmpty()) {
-                        onConfirm(trimmed)
-                    }
-                }
-            ) {
-                Text(
-                    text = "Save",
-                    fontWeight = FontWeight.Bold,
-                    color = BoopBrandPurple
-                )
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text(
-                    text = "Cancel",
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-    )
-}
-
 // ─── Receive Permission Dialog ──────────────────────────────────────────────
 
 @Composable
@@ -649,7 +555,6 @@ private fun SettingsScreenPreview() {
             onNotificationsToggle = {},
             onVibrationToggle = {},
             onSoundToggle = {},
-            onDisplayNameChange = {},
             onDarkModeToggle = {},
             onReceivePermissionChange = {}
         )
@@ -666,7 +571,6 @@ private fun SettingsScreenLightPreview() {
             onNotificationsToggle = {},
             onVibrationToggle = {},
             onSoundToggle = {},
-            onDisplayNameChange = {},
             onDarkModeToggle = {},
             onReceivePermissionChange = {}
         )
