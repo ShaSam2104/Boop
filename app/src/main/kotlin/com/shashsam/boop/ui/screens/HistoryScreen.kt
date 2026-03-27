@@ -29,6 +29,7 @@ import androidx.compose.material.icons.outlined.History
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.ui.graphics.Color
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -169,7 +170,14 @@ fun HistoryScreen(
                     },
                     colors = FilterChipDefaults.filterChipColors(
                         selectedContainerColor = MaterialTheme.colorScheme.primary,
-                        selectedLabelColor = MaterialTheme.colorScheme.onPrimary
+                        selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
+                        containerColor = tokens.glassBg
+                    ),
+                    border = FilterChipDefaults.filterChipBorder(
+                        borderColor = Color.Transparent,
+                        selectedBorderColor = Color.Transparent,
+                        enabled = true,
+                        selected = directionFilter == filter
                     )
                 )
             }
@@ -205,7 +213,14 @@ fun HistoryScreen(
                     },
                     colors = FilterChipDefaults.filterChipColors(
                         selectedContainerColor = MaterialTheme.colorScheme.primary,
-                        selectedLabelColor = MaterialTheme.colorScheme.onPrimary
+                        selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
+                        containerColor = tokens.glassBg
+                    ),
+                    border = FilterChipDefaults.filterChipBorder(
+                        borderColor = Color.Transparent,
+                        selectedBorderColor = Color.Transparent,
+                        enabled = true,
+                        selected = fileTypeFilter == filter
                     )
                 )
             }

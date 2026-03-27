@@ -131,7 +131,8 @@ fun NeoBrutalistButton(
 // ─── Glass Card ─────────────────────────────────────────────────────────────
 
 /**
- * A semi-transparent card with thin border, approximating a glass/frosted effect.
+ * A semi-transparent card approximating a glass/frosted effect.
+ * No visible border — uses elevated glass background and subtle elevation for depth.
  */
 @Composable
 fun GlassCard(
@@ -143,7 +144,7 @@ fun GlassCard(
         modifier = modifier,
         shape = BoopShapeMedium,
         colors = CardDefaults.cardColors(containerColor = tokens.glassBg),
-        border = BorderStroke(1.dp, tokens.glassBorder)
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         content()
     }

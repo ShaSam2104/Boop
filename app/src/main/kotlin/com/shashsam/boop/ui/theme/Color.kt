@@ -43,10 +43,10 @@ val ErrorRed = Color(0xFFCF6679)
 val WarningAmber = Color(0xFFFFB74D)
 
 // ─── Glass / overlay ────────────────────────────────────────────────────────
-val GlassWhiteBg = Color(0x14FFFFFF)      // ~8% white
-val GlassWhiteBorder = Color(0x33FFFFFF)  // 20% white
-val GlassDarkBg = Color(0x14000000)       // ~8% black
-val GlassDarkBorder = Color(0x33000000)   // 20% black
+val GlassWhiteBg = Color(0x1FFFFFFF)      // ~12% white — borderless glass
+val GlassWhiteBorder = Color(0x33FFFFFF)  // 20% white (kept for reference)
+val GlassDarkBg = Color(0x1F000000)       // ~12% black
+val GlassDarkBorder = Color(0x33000000)   // 20% black (kept for reference)
 
 // ─── Glow ───────────────────────────────────────────────────────────────────
 val BoopGlowYellow = Color(0x26F8FFA3)    // 15% accent yellow

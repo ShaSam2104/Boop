@@ -13,6 +13,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.graphics.Color
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
@@ -82,6 +83,12 @@ fun ProfileItemDialog(
                             colors = FilterChipDefaults.filterChipColors(
                                 selectedContainerColor = BoopBrandPurple,
                                 selectedLabelColor = MaterialTheme.colorScheme.onPrimary
+                            ),
+                            border = FilterChipDefaults.filterChipBorder(
+                                borderColor = Color.Transparent,
+                                selectedBorderColor = Color.Transparent,
+                                enabled = true,
+                                selected = isSelected
                             )
                         )
                     }
@@ -170,6 +177,12 @@ fun ProfileItemDialog(
                             colors = FilterChipDefaults.filterChipColors(
                                 selectedContainerColor = BoopBrandPurple,
                                 selectedLabelColor = MaterialTheme.colorScheme.onPrimary
+                            ),
+                            border = FilterChipDefaults.filterChipBorder(
+                                borderColor = Color.Transparent,
+                                selectedBorderColor = Color.Transparent,
+                                enabled = true,
+                                selected = isSelected
                             )
                         )
                     }
