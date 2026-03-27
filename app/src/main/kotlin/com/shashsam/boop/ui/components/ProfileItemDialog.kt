@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -34,6 +35,7 @@ import com.shashsam.boop.ui.theme.BoopShapeMedium
 fun ProfileItemDialog(
     existingItem: ProfileItemEntity? = null,
     onSave: (type: String, label: String, value: String, size: String) -> Unit,
+    onDelete: (() -> Unit)? = null,
     onDismiss: () -> Unit
 ) {
     var type by remember { mutableStateOf(existingItem?.type ?: "link") }
@@ -192,12 +194,23 @@ fun ProfileItemDialog(
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text(
-                    text = "Cancel",
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+            Row {
+                if (isEdit && onDelete != null) {
+                    TextButton(onClick = onDelete) {
+                        Text(
+                            text = "Delete",
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
+                }
+                TextButton(onClick = onDismiss) {
+                    Text(
+                        text = "Cancel",
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
         }
     )

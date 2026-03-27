@@ -17,15 +17,10 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -75,7 +70,6 @@ fun BentoGrid(
                             isEditable = isEditable,
                             onItemClick = onItemClick,
                             onEditItem = onEditItem,
-                            onDeleteItem = onDeleteItem,
                             modifier = Modifier.weight(span.toFloat())
                         )
                     } else {
@@ -84,7 +78,6 @@ fun BentoGrid(
                             isEditable = isEditable,
                             onItemClick = onItemClick,
                             onEditItem = onEditItem,
-                            onDeleteItem = onDeleteItem,
                             modifier = Modifier.weight(1f)
                         )
                     }
@@ -100,7 +93,8 @@ fun BentoGrid(
 }
 
 /**
- * Half item (1x1) — icon-only square tile.
+ * Half item (1x1) — icon-only square tile. Tap opens link/email/phone in view mode,
+ * opens edit dialog in edit mode.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -109,7 +103,6 @@ private fun BentoItemHalf(
     isEditable: Boolean,
     onItemClick: (ProfileItemEntity) -> Unit,
     onEditItem: (ProfileItemEntity) -> Unit,
-    onDeleteItem: (Long) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val tokens = LocalBoopTokens.current
@@ -118,7 +111,11 @@ private fun BentoItemHalf(
 
     GlassCard(
         modifier = modifier.then(
-            if (!isEditable) {
+            if (isEditable) {
+                Modifier.combinedClickable(
+                    onClick = { onEditItem(item) }
+                )
+            } else {
                 Modifier.combinedClickable(
                     onClick = {
                         Log.d(TAG, "Item clicked: ${item.label}")
@@ -129,14 +126,13 @@ private fun BentoItemHalf(
                         copyToClipboard(context, item.value)
                     }
                 )
-            } else Modifier
+            }
         )
     ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .aspectRatio(1f)
-                .padding(8.dp),
+                .aspectRatio(1f),
             contentAlignment = Alignment.Center
         ) {
             when (icon) {
@@ -144,52 +140,22 @@ private fun BentoItemHalf(
                     imageVector = icon,
                     contentDescription = item.label,
                     tint = tokens.accent,
-                    modifier = Modifier.size(28.dp)
+                    modifier = Modifier.size(36.dp)
                 )
                 is Int -> Icon(
                     painter = painterResource(id = icon),
                     contentDescription = item.label,
                     tint = tokens.accent,
-                    modifier = Modifier.size(28.dp)
+                    modifier = Modifier.size(36.dp)
                 )
-            }
-
-            if (isEditable) {
-                Row(
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                ) {
-                    IconButton(
-                        onClick = { onEditItem(item) },
-                        modifier = Modifier.size(20.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.Edit,
-                            contentDescription = "Edit",
-                            tint = tokens.textSecondary,
-                            modifier = Modifier.size(12.dp)
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(2.dp))
-                    IconButton(
-                        onClick = { onDeleteItem(item.id) },
-                        modifier = Modifier.size(20.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.Close,
-                            contentDescription = "Delete",
-                            tint = MaterialTheme.colorScheme.error,
-                            modifier = Modifier.size(12.dp)
-                        )
-                    }
-                }
             }
         }
     }
 }
 
 /**
- * Full item (1x2) — icon + label text, wider tile.
+ * Full item (1x2) — icon + label text, wider tile. Tap opens link/email/phone in view mode,
+ * opens edit dialog in edit mode.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -198,7 +164,6 @@ private fun BentoItemFull(
     isEditable: Boolean,
     onItemClick: (ProfileItemEntity) -> Unit,
     onEditItem: (ProfileItemEntity) -> Unit,
-    onDeleteItem: (Long) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val tokens = LocalBoopTokens.current
@@ -207,7 +172,11 @@ private fun BentoItemFull(
 
     GlassCard(
         modifier = modifier.then(
-            if (!isEditable) {
+            if (isEditable) {
+                Modifier.combinedClickable(
+                    onClick = { onEditItem(item) }
+                )
+            } else {
                 Modifier.combinedClickable(
                     onClick = {
                         Log.d(TAG, "Item clicked: ${item.label}")
@@ -218,17 +187,16 @@ private fun BentoItemFull(
                         copyToClipboard(context, item.value)
                     }
                 )
-            } else Modifier
+            }
         )
     ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .aspectRatio(2f)
-                .padding(12.dp)
+                .aspectRatio(2f),
+            contentAlignment = Alignment.Center
         ) {
             Row(
-                modifier = Modifier.fillMaxSize(),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.Center
             ) {
@@ -237,54 +205,24 @@ private fun BentoItemFull(
                         imageVector = icon,
                         contentDescription = item.label,
                         tint = tokens.accent,
-                        modifier = Modifier.size(24.dp)
+                        modifier = Modifier.size(32.dp)
                     )
                     is Int -> Icon(
                         painter = painterResource(id = icon),
                         contentDescription = item.label,
                         tint = tokens.accent,
-                        modifier = Modifier.size(24.dp)
+                        modifier = Modifier.size(32.dp)
                     )
                 }
-                Spacer(modifier = Modifier.width(8.dp))
+                Spacer(modifier = Modifier.width(10.dp))
                 Text(
                     text = item.label,
-                    style = MaterialTheme.typography.labelLarge,
+                    style = MaterialTheme.typography.bodyLarge,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onBackground,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-            }
-
-            if (isEditable) {
-                Row(
-                    modifier = Modifier.align(Alignment.TopEnd)
-                ) {
-                    IconButton(
-                        onClick = { onEditItem(item) },
-                        modifier = Modifier.size(24.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.Edit,
-                            contentDescription = "Edit",
-                            tint = tokens.textSecondary,
-                            modifier = Modifier.size(14.dp)
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(4.dp))
-                    IconButton(
-                        onClick = { onDeleteItem(item.id) },
-                        modifier = Modifier.size(24.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.Close,
-                            contentDescription = "Delete",
-                            tint = MaterialTheme.colorScheme.error,
-                            modifier = Modifier.size(14.dp)
-                        )
-                    }
-                }
             }
         }
     }
@@ -302,7 +240,6 @@ private fun packIntoRows(items: List<ProfileItemEntity>): List<List<ProfileItemE
     for (item in items) {
         val span = if (item.size == "full") 2 else 1
         if (columnsUsed + span > GRID_COLUMNS) {
-            // Current row is full, start a new one
             if (currentRow.isNotEmpty()) {
                 rows.add(currentRow.toList())
                 currentRow.clear()

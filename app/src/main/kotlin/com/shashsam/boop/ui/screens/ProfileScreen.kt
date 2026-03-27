@@ -363,6 +363,10 @@ fun ProfileScreen(
                 onEditItem(item.copy(type = type, label = label, value = value, size = size))
                 editingItem = null
             },
+            onDelete = {
+                onDeleteItem(item.id)
+                editingItem = null
+            },
             onDismiss = { editingItem = null }
         )
     }
