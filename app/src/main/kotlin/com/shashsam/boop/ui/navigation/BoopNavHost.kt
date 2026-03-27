@@ -2,8 +2,8 @@ package com.shashsam.boop.ui.navigation
 
 import android.util.Log
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.EnterTransition
-import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.window.DialogProperties
@@ -27,9 +27,12 @@ import com.shashsam.boop.ui.viewmodels.SettingsUiState
 import com.shashsam.boop.ui.viewmodels.TransferUiState
 
 private const val TAG = "BoopNavHost"
+private const val ANIM_DURATION = 300
 
 /**
  * Navigation host that maps [BoopRoute]s to screen composables.
+ * Slide animations: left/right based on tab position for tabs,
+ * slide-in-right for push screens, slide-out-right for pop.
  */
 @Composable
 fun BoopNavHost(
@@ -66,10 +69,60 @@ fun BoopNavHost(
         navController = navController,
         startDestination = BoopRoute.Home.route,
         modifier = modifier,
-        enterTransition = { EnterTransition.None },
-        exitTransition = { ExitTransition.None },
-        popEnterTransition = { EnterTransition.None },
-        popExitTransition = { ExitTransition.None }
+        enterTransition = {
+            val from = BoopRoute.tabIndex(initialState.destination.route)
+            val to = BoopRoute.tabIndex(targetState.destination.route)
+            if (from >= 0 && to >= 0) {
+                // Tab-to-tab or tab-to-push: slide based on index
+                val direction = if (to >= from)
+                    AnimatedContentTransitionScope.SlideDirection.Left
+                else
+                    AnimatedContentTransitionScope.SlideDirection.Right
+                slideIntoContainer(direction, tween(ANIM_DURATION))
+            } else {
+                // Push screen (TransferProgress, NfcGuide): slide in from right
+                slideIntoContainer(AnimatedContentTransitionScope.SlideDirection.Left, tween(ANIM_DURATION))
+            }
+        },
+        exitTransition = {
+            val from = BoopRoute.tabIndex(initialState.destination.route)
+            val to = BoopRoute.tabIndex(targetState.destination.route)
+            if (from >= 0 && to >= 0) {
+                val direction = if (to >= from)
+                    AnimatedContentTransitionScope.SlideDirection.Left
+                else
+                    AnimatedContentTransitionScope.SlideDirection.Right
+                slideOutOfContainer(direction, tween(ANIM_DURATION))
+            } else {
+                slideOutOfContainer(AnimatedContentTransitionScope.SlideDirection.Left, tween(ANIM_DURATION))
+            }
+        },
+        popEnterTransition = {
+            val from = BoopRoute.tabIndex(initialState.destination.route)
+            val to = BoopRoute.tabIndex(targetState.destination.route)
+            if (from >= 0 && to >= 0) {
+                val direction = if (to <= from)
+                    AnimatedContentTransitionScope.SlideDirection.Right
+                else
+                    AnimatedContentTransitionScope.SlideDirection.Left
+                slideIntoContainer(direction, tween(ANIM_DURATION))
+            } else {
+                slideIntoContainer(AnimatedContentTransitionScope.SlideDirection.Right, tween(ANIM_DURATION))
+            }
+        },
+        popExitTransition = {
+            val from = BoopRoute.tabIndex(initialState.destination.route)
+            val to = BoopRoute.tabIndex(targetState.destination.route)
+            if (from >= 0 && to >= 0) {
+                val direction = if (to <= from)
+                    AnimatedContentTransitionScope.SlideDirection.Right
+                else
+                    AnimatedContentTransitionScope.SlideDirection.Left
+                slideOutOfContainer(direction, tween(ANIM_DURATION))
+            } else {
+                slideOutOfContainer(AnimatedContentTransitionScope.SlideDirection.Right, tween(ANIM_DURATION))
+            }
+        }
     ) {
         composable(BoopRoute.Home.route) {
             HomeScreen(
