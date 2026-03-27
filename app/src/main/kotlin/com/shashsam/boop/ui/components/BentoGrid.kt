@@ -14,6 +14,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -41,6 +43,7 @@ import com.shashsam.boop.ui.theme.LocalBoopTokens
 import com.shashsam.boop.utils.resolveSocialIcon
 
 private const val TAG = "BentoGrid"
+private const val GRID_COLUMNS = 4
 
 @Composable
 fun BentoGrid(
@@ -62,25 +65,46 @@ fun BentoGrid(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
+                var columnsUsed = 0
                 for (item in row) {
-                    val weight = if (item.size == "full" || row.size == 1) 1f else 0.5f
-                    BentoItem(
-                        item = item,
-                        isEditable = isEditable,
-                        onItemClick = onItemClick,
-                        onEditItem = onEditItem,
-                        onDeleteItem = onDeleteItem,
-                        modifier = Modifier.weight(weight)
-                    )
+                    val span = if (item.size == "full") 2 else 1
+                    columnsUsed += span
+                    if (item.size == "full") {
+                        BentoItemFull(
+                            item = item,
+                            isEditable = isEditable,
+                            onItemClick = onItemClick,
+                            onEditItem = onEditItem,
+                            onDeleteItem = onDeleteItem,
+                            modifier = Modifier.weight(span.toFloat())
+                        )
+                    } else {
+                        BentoItemHalf(
+                            item = item,
+                            isEditable = isEditable,
+                            onItemClick = onItemClick,
+                            onEditItem = onEditItem,
+                            onDeleteItem = onDeleteItem,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+                // Fill remaining empty columns with spacers
+                val remaining = GRID_COLUMNS - columnsUsed
+                if (remaining > 0) {
+                    Spacer(modifier = Modifier.weight(remaining.toFloat()))
                 }
             }
         }
     }
 }
 
+/**
+ * Half item (1x1) — icon-only square tile.
+ */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun BentoItem(
+private fun BentoItemHalf(
     item: ProfileItemEntity,
     isEditable: Boolean,
     onItemClick: (ProfileItemEntity) -> Unit,
@@ -111,43 +135,124 @@ private fun BentoItem(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(12.dp)
+                .aspectRatio(1f)
+                .padding(8.dp),
+            contentAlignment = Alignment.Center
         ) {
-            Column {
+            when (icon) {
+                is ImageVector -> Icon(
+                    imageVector = icon,
+                    contentDescription = item.label,
+                    tint = tokens.accent,
+                    modifier = Modifier.size(28.dp)
+                )
+                is Int -> Icon(
+                    painter = painterResource(id = icon),
+                    contentDescription = item.label,
+                    tint = tokens.accent,
+                    modifier = Modifier.size(28.dp)
+                )
+            }
+
+            if (isEditable) {
                 Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
                 ) {
-                    when (icon) {
-                        is ImageVector -> Icon(
-                            imageVector = icon,
-                            contentDescription = item.label,
-                            tint = tokens.accent,
-                            modifier = Modifier.size(20.dp)
-                        )
-                        is Int -> Icon(
-                            painter = painterResource(id = icon),
-                            contentDescription = item.label,
-                            tint = tokens.accent,
-                            modifier = Modifier.size(20.dp)
+                    IconButton(
+                        onClick = { onEditItem(item) },
+                        modifier = Modifier.size(20.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Edit,
+                            contentDescription = "Edit",
+                            tint = tokens.textSecondary,
+                            modifier = Modifier.size(12.dp)
                         )
                     }
-                    Text(
-                        text = item.label,
-                        style = MaterialTheme.typography.labelLarge,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onBackground,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f)
+                    Spacer(modifier = Modifier.width(2.dp))
+                    IconButton(
+                        onClick = { onDeleteItem(item.id) },
+                        modifier = Modifier.size(20.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Close,
+                            contentDescription = "Delete",
+                            tint = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(12.dp)
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Full item (1x2) — icon + label text, wider tile.
+ */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun BentoItemFull(
+    item: ProfileItemEntity,
+    isEditable: Boolean,
+    onItemClick: (ProfileItemEntity) -> Unit,
+    onEditItem: (ProfileItemEntity) -> Unit,
+    onDeleteItem: (Long) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val tokens = LocalBoopTokens.current
+    val context = LocalContext.current
+    val icon = resolveSocialIcon(item.type, item.value)
+
+    GlassCard(
+        modifier = modifier.then(
+            if (!isEditable) {
+                Modifier.combinedClickable(
+                    onClick = {
+                        Log.d(TAG, "Item clicked: ${item.label}")
+                        handleItemClick(context, item)
+                        onItemClick(item)
+                    },
+                    onLongClick = {
+                        copyToClipboard(context, item.value)
+                    }
+                )
+            } else Modifier
+        )
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(2f)
+                .padding(12.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxSize(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
+            ) {
+                when (icon) {
+                    is ImageVector -> Icon(
+                        imageVector = icon,
+                        contentDescription = item.label,
+                        tint = tokens.accent,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    is Int -> Icon(
+                        painter = painterResource(id = icon),
+                        contentDescription = item.label,
+                        tint = tokens.accent,
+                        modifier = Modifier.size(24.dp)
                     )
                 }
-                Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = item.value,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = tokens.textSecondary,
-                    maxLines = if (item.size == "full") 2 else 1,
+                    text = item.label,
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onBackground,
+                    maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
             }
@@ -185,24 +290,35 @@ private fun BentoItem(
     }
 }
 
+/**
+ * Packs items into rows for a 4-column grid.
+ * Half items take 1 column, full items take 2 columns.
+ */
 private fun packIntoRows(items: List<ProfileItemEntity>): List<List<ProfileItemEntity>> {
     val rows = mutableListOf<List<ProfileItemEntity>>()
-    var i = 0
-    while (i < items.size) {
-        val item = items[i]
-        if (item.size == "full") {
-            rows.add(listOf(item))
-            i++
-        } else {
-            // Half-size item — check if next item is also half
-            if (i + 1 < items.size && items[i + 1].size == "half") {
-                rows.add(listOf(item, items[i + 1]))
-                i += 2
-            } else {
-                rows.add(listOf(item))
-                i++
+    val currentRow = mutableListOf<ProfileItemEntity>()
+    var columnsUsed = 0
+
+    for (item in items) {
+        val span = if (item.size == "full") 2 else 1
+        if (columnsUsed + span > GRID_COLUMNS) {
+            // Current row is full, start a new one
+            if (currentRow.isNotEmpty()) {
+                rows.add(currentRow.toList())
+                currentRow.clear()
+                columnsUsed = 0
             }
         }
+        currentRow.add(item)
+        columnsUsed += span
+        if (columnsUsed >= GRID_COLUMNS) {
+            rows.add(currentRow.toList())
+            currentRow.clear()
+            columnsUsed = 0
+        }
+    }
+    if (currentRow.isNotEmpty()) {
+        rows.add(currentRow.toList())
     }
     return rows
 }

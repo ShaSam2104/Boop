@@ -121,6 +121,8 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
     private val friendDao: FriendDao =
         BoopDatabase.getInstance(application).friendDao()
 
+    private val profileItemDao = BoopDatabase.getInstance(application).profileItemDao()
+
     private val settingsPrefs = application.getSharedPreferences("boop_settings", android.content.Context.MODE_PRIVATE)
 
     private var currentConnectionSsid: String? = null
@@ -265,6 +267,7 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
         }
         // Extract file name from URI for display in Recent Boops
         val fileName = resolveFileName(fileUri)
+        friendDecisionDeferred = CompletableDeferred()
         transferJob?.cancel()
         transferJob = viewModelScope.launch {
             appendLog("🚀 Starting file transfer…")
@@ -274,11 +277,16 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
                     transferProgress = 0f,
                     transferComplete = false,
                     currentFileName = fileName,
-                    senderFileUri = fileUri
+                    senderFileUri = fileUri,
+                    pendingFileUris = listOf(fileUri)
                 )
             }
-            TransferManager.sendFile(context, fileUri, BoopHceService.DEFAULT_PORT)
-                .collect { progress -> handleTransferProgress(progress) }
+            val senderProfile = buildLocalProfile()
+            TransferManager.sendFilesWithFriendExchange(
+                context, listOf(fileUri), BoopHceService.DEFAULT_PORT,
+                senderProfile = senderProfile,
+                friendDecision = friendDecisionDeferred
+            ).collect { progress -> handleSenderProgress(progress) }
         }
     }
 
@@ -308,6 +316,7 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
         }
         val firstName = resolveFileName(fileUris.first())
         BoopHceService.connectionFileCount = fileUris.size
+        friendDecisionDeferred = CompletableDeferred()
         transferJob?.cancel()
         transferJob = viewModelScope.launch {
             appendLog("🚀 Starting multi-file transfer (${fileUris.size} files)…")
@@ -323,8 +332,12 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
                     pendingFileUris = fileUris
                 )
             }
-            TransferManager.sendFiles(context, fileUris, BoopHceService.DEFAULT_PORT)
-                .collect { progress -> handleMultiFileProgress(progress) }
+            val senderProfile = buildLocalProfile()
+            TransferManager.sendFilesWithFriendExchange(
+                context, fileUris, BoopHceService.DEFAULT_PORT,
+                senderProfile = senderProfile,
+                friendDecision = friendDecisionDeferred
+            ).collect { progress -> handleSenderProgress(progress) }
         }
     }
 
@@ -391,6 +404,27 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
                         totalFiles = progress.totalFiles,
                         currentFileName = progress.fileName ?: it.currentFileName
                     )
+                }
+            }
+        }
+    }
+
+    private fun handleSenderProgress(progress: com.shashsam.boop.transfer.TransferProgress) {
+        when {
+            progress.friendRequest != null -> {
+                Log.d(TAG, "Friend request received from: ${progress.friendRequest.displayName}")
+                _uiState.update { it.copy(pendingFriendRequest = progress.friendRequest) }
+            }
+            progress.friendProfile != null -> {
+                handleFriendProfileReceived(progress.friendProfile)
+                _uiState.update { it.copy(friendExchangeComplete = true) }
+            }
+            else -> {
+                val totalFiles = _uiState.value.totalFiles
+                if (totalFiles > 1) {
+                    handleMultiFileProgress(progress)
+                } else {
+                    handleTransferProgress(progress)
                 }
             }
         }
@@ -651,7 +685,7 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    private fun buildLocalProfile(): ProfileData {
+    private suspend fun buildLocalProfile(): ProfileData {
         val displayName = settingsPrefs.getString("display_name", "") ?: ""
         val profilePicPath = settingsPrefs.getString("profile_pic_path", null)
         val picBytes = profilePicPath?.let { path ->
@@ -662,10 +696,24 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
                 null
             }
         }
-        // We don't have access to ProfileViewModel's items here, so read from DB directly
+        // Read profile items from DB directly to build JSON
+        val items = profileItemDao.getAllOnce()
+        val profileJson = if (items.isNotEmpty()) {
+            val array = org.json.JSONArray()
+            for (item in items) {
+                array.put(org.json.JSONObject().apply {
+                    put("type", item.type)
+                    put("label", item.label)
+                    put("value", item.value)
+                    put("size", item.size)
+                    put("sortOrder", item.sortOrder)
+                })
+            }
+            array.toString()
+        } else ""
         return ProfileData(
             displayName = displayName,
-            profileItemsJson = "", // Will be set by caller if available
+            profileItemsJson = profileJson,
             profilePicBytes = picBytes
         )
     }
@@ -674,6 +722,8 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
 
     fun prepareProfileShare() {
         Log.d(TAG, "prepareProfileShare()")
+        TransferManager.cleanup()
+        transferJob?.cancel()
         BoopHceService.connectionType = "profile"
         BoopHceService.connectionFileCount = 0
         BoopHceService.connectionDisplayName = settingsPrefs.getString("display_name", "") ?: ""
@@ -687,6 +737,7 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
             )
         }
         viewModelScope.launch {
+            wifiDirectManager.reset()
             val ok = wifiDirectManager.createGroup()
             if (!ok) {
                 appendLog("❌ Failed to create Wi-Fi Direct group for profile share.", isError = true)

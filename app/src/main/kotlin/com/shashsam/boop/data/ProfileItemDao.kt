@@ -20,6 +20,9 @@ interface ProfileItemDao {
     @Query("SELECT * FROM profile_items ORDER BY sortOrder ASC")
     fun getAll(): Flow<List<ProfileItemEntity>>
 
+    @Query("SELECT * FROM profile_items ORDER BY sortOrder ASC")
+    suspend fun getAllOnce(): List<ProfileItemEntity>
+
     @Query("SELECT COUNT(*) FROM profile_items")
     suspend fun getCount(): Int
 

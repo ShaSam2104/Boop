@@ -3,6 +3,8 @@ package com.shashsam.boop.ui.screens
 import android.net.Uri
 import android.os.Build
 import android.util.Log
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -87,6 +89,11 @@ fun ProfileScreen(
     var showNameDialog by remember { mutableStateOf(false) }
     var showAddDialog by remember { mutableStateOf(false) }
     var editingItem by remember { mutableStateOf<ProfileItemEntity?>(null) }
+    val photoPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        uri?.let { onProfilePicPick(it) }
+    }
 
     LazyColumn(
         modifier = modifier
@@ -130,24 +137,26 @@ fun ProfileScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    // Profile pic
+                    // Profile pic — tap to change
                     val picFile = profilePicPath?.let { File(it) }
                     if (picFile != null && picFile.exists()) {
                         AsyncImage(
                             model = picFile,
-                            contentDescription = "Profile picture",
+                            contentDescription = "Profile picture — tap to change",
                             modifier = Modifier
                                 .size(56.dp)
                                 .clip(CircleShape)
-                                .clickable { /* photo picker handled by caller */ },
+                                .clickable { photoPickerLauncher.launch("image/*") },
                             contentScale = ContentScale.Crop
                         )
                     } else {
                         Icon(
                             imageVector = Icons.Filled.Person,
-                            contentDescription = null,
+                            contentDescription = "Add profile picture",
                             tint = tokens.accent,
-                            modifier = Modifier.size(56.dp)
+                            modifier = Modifier
+                                .size(56.dp)
+                                .clickable { photoPickerLauncher.launch("image/*") }
                         )
                     }
                     Column(modifier = Modifier.weight(1f)) {

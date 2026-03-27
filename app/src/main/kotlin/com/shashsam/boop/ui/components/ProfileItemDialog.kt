@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -64,10 +65,22 @@ fun ProfileItemDialog(
                 Spacer(modifier = Modifier.height(4.dp))
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf("link" to "Link", "email" to "Email", "phone" to "Phone").forEach { (t, lbl) ->
+                        val isSelected = type == t
                         FilterChip(
-                            selected = type == t,
+                            selected = isSelected,
                             onClick = { type = t },
-                            label = { Text(lbl) }
+                            label = {
+                                Text(
+                                    lbl,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (isSelected) MaterialTheme.colorScheme.onPrimary
+                                            else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = BoopBrandPurple,
+                                selectedLabelColor = MaterialTheme.colorScheme.onPrimary
+                            )
                         )
                     }
                 }
@@ -140,10 +153,22 @@ fun ProfileItemDialog(
                 Spacer(modifier = Modifier.height(4.dp))
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf("half" to "Half", "full" to "Full").forEach { (s, lbl) ->
+                        val isSelected = size == s
                         FilterChip(
-                            selected = size == s,
+                            selected = isSelected,
                             onClick = { size = s },
-                            label = { Text(lbl) }
+                            label = {
+                                Text(
+                                    lbl,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (isSelected) MaterialTheme.colorScheme.onPrimary
+                                            else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = BoopBrandPurple,
+                                selectedLabelColor = MaterialTheme.colorScheme.onPrimary
+                            )
                         )
                     }
                 }
