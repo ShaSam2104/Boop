@@ -28,7 +28,9 @@ import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -116,7 +118,12 @@ fun NeoBrutalistButton(
                 .padding(contentPadding),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            content()
+            CompositionLocalProvider(
+                LocalContentColor provides if (enabled) MaterialTheme.colorScheme.onPrimary
+                    else MaterialTheme.colorScheme.onSurfaceVariant
+            ) {
+                this@Row.content()
+            }
         }
     }
 }

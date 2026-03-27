@@ -113,7 +113,7 @@ fun HistoryScreen(
             else -> classifyMimeType(boop.mimeType) == fileTypeFilter
         }
         dirMatch && typeMatch
-    }
+    }.sortedByDescending { it.timestamp }
 
     Column(
         modifier = modifier

@@ -32,8 +32,8 @@ import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Contactless
 import androidx.compose.material.icons.filled.InsertDriveFile
-import androidx.compose.material.icons.filled.LocalCafe
-import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -83,7 +83,6 @@ fun HomeScreen(
     transferUiState: TransferUiState,
     onSendClick: () -> Unit,
     onResetClick: () -> Unit,
-    onSettingsClick: () -> Unit = {},
     onNfcGuideClick: () -> Unit = {},
     onViewAllClick: () -> Unit = {},
     modifier: Modifier = Modifier
@@ -133,18 +132,18 @@ fun HomeScreen(
                     }
                 }) {
                     Icon(
-                        imageVector = Icons.Filled.LocalCafe,
+                        imageVector = Icons.Filled.Favorite,
                         contentDescription = "Buy me a Chai",
                         tint = tokens.accent,
                         modifier = Modifier.size(26.dp)
                     )
                 }
-                IconButton(onClick = onSettingsClick) {
+                IconButton(onClick = onNfcGuideClick) {
                     Icon(
-                        imageVector = Icons.Filled.Settings,
-                        contentDescription = "Settings",
+                        imageVector = Icons.Filled.Info,
+                        contentDescription = "NFC Guide",
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(28.dp)
+                        modifier = Modifier.size(26.dp)
                     )
                 }
             }
