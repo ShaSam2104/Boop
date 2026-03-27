@@ -4,35 +4,24 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- NFC contactless icon — arcs radiate upper-right from center dot -->
-    <!-- Safe zone: 18dp inset, content area is 72x72 centered -->
+    <!-- Two overlapping circles = two devices meeting.
+         Yellow intersection lens = the "boop" spark.
+         Safe zone: 18dp inset, content area is 72x72 centered -->
 
-    <!-- Central dot -->
+    <!-- Left circle — brand purple -->
+    <path
+        android:fillColor="#736DEE"
+        android:pathData="M39,54 m-22,0 a22,22 0,1,1 44,0 a22,22 0,1,1 -44,0" />
+
+    <!-- Right circle — brand purple -->
+    <path
+        android:fillColor="#736DEE"
+        android:pathData="M69,54 m-22,0 a22,22 0,1,1 44,0 a22,22 0,1,1 -44,0" />
+
+    <!-- Intersection lens — accent yellow (the "boop" spark)
+         Two small clockwise arcs tracing the right edge of left circle
+         and left edge of right circle to form an almond/vesica shape -->
     <path
         android:fillColor="#F8FFA3"
-        android:pathData="M44,62m-6,0a6,6 0,1 1,12 0a6,6 0,1 1,-12 0" />
-
-    <!-- Inner arc (radius 14) -->
-    <path
-        android:fillColor="#00000000"
-        android:strokeColor="#F8FFA3"
-        android:strokeWidth="4"
-        android:strokeLineCap="round"
-        android:pathData="M53.9,71.9 A14,14 0 0,0 53.9,52.1" />
-
-    <!-- Middle arc (radius 24) -->
-    <path
-        android:fillColor="#00000000"
-        android:strokeColor="#F8FFA3"
-        android:strokeWidth="4"
-        android:strokeLineCap="round"
-        android:pathData="M60.97,78.97 A24,24 0 0,0 60.97,45.03" />
-
-    <!-- Outer arc (radius 34) -->
-    <path
-        android:fillColor="#00000000"
-        android:strokeColor="#F8FFA3"
-        android:strokeWidth="4"
-        android:strokeLineCap="round"
-        android:pathData="M68.04,85.04 A34,34 0 0,0 68.04,38.96" />
+        android:pathData="M54,38 A22,22 0,0,1 54,70 A22,22 0,0,1 54,38 Z" />
 </vector>
