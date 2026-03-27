@@ -95,6 +95,7 @@ fun HistoryScreen(
     Log.d(TAG, "HistoryScreen composed — ${recentTransfers.size} total transfers")
 
     val tokens = LocalBoopTokens.current
+    val haptics = rememberBoopHaptics()
     val context = LocalContext.current
     val now = System.currentTimeMillis()
     val last30Days = recentTransfers.filter { now - it.timestamp < THIRTY_DAYS_MS }
@@ -161,7 +162,7 @@ fun HistoryScreen(
             DirectionFilter.entries.forEach { filter ->
                 FilterChip(
                     selected = directionFilter == filter,
-                    onClick = { directionFilter = filter },
+                    onClick = { haptics.tick(); directionFilter = filter },
                     label = {
                         Text(
                             text = filter.label,
@@ -204,7 +205,7 @@ fun HistoryScreen(
             FileTypeFilter.entries.forEach { filter ->
                 FilterChip(
                     selected = fileTypeFilter == filter,
-                    onClick = { fileTypeFilter = filter },
+                    onClick = { haptics.tick(); fileTypeFilter = filter },
                     label = {
                         Text(
                             text = filter.label,

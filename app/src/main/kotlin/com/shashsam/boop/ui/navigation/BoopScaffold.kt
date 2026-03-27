@@ -7,6 +7,7 @@ import android.util.Log
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,6 +20,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Nfc
+import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -49,6 +51,8 @@ import com.shashsam.boop.data.ProfileItemEntity
 import com.shashsam.boop.nfc.ConnectionDetails
 import com.shashsam.boop.transfer.ProfileData
 import com.shashsam.boop.ui.theme.BoopBottomNavBar
+import com.shashsam.boop.ui.theme.BoopShapeMedium
+import com.shashsam.boop.ui.theme.LocalBoopTokens
 import com.shashsam.boop.ui.theme.NeoBrutalistButton
 import com.shashsam.boop.ui.viewmodels.SettingsUiState
 import com.shashsam.boop.ui.viewmodels.TransferUiState
@@ -240,11 +244,13 @@ fun BoopScaffold(
         val friendName = transferUiState.pendingFriendRequest.displayName.takeIf { it.isNotBlank() } ?: "Someone"
         AlertDialog(
             onDismissRequest = onRejectFriendRequest,
+            shape = BoopShapeMedium,
+            containerColor = MaterialTheme.colorScheme.surface,
             icon = {
                 Icon(
-                    imageVector = Icons.Filled.Nfc,
+                    imageVector = Icons.Filled.PersonAdd,
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
+                    tint = LocalBoopTokens.current.accent,
                     modifier = Modifier.size(40.dp)
                 )
             },
@@ -255,7 +261,10 @@ fun BoopScaffold(
                 )
             },
             text = {
-                Text(text = "$friendName wants to become friends")
+                Text(
+                    text = "$friendName wants to become friends",
+                    style = MaterialTheme.typography.bodyLarge
+                )
             },
             confirmButton = {
                 NeoBrutalistButton(onClick = onAcceptFriendRequest) {
@@ -264,7 +273,7 @@ fun BoopScaffold(
             },
             dismissButton = {
                 TextButton(onClick = onRejectFriendRequest) {
-                    Text("Decline", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.error)
+                    Text("Decline", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         )
@@ -276,11 +285,13 @@ fun BoopScaffold(
         val profileName = profile.displayName.takeIf { it.isNotBlank() } ?: "Unknown"
         AlertDialog(
             onDismissRequest = onDismissReceivedProfile,
+            shape = BoopShapeMedium,
+            containerColor = MaterialTheme.colorScheme.surface,
             icon = {
                 Icon(
-                    imageVector = Icons.Filled.Nfc,
+                    imageVector = Icons.Filled.PersonAdd,
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
+                    tint = LocalBoopTokens.current.accent,
                     modifier = Modifier.size(40.dp)
                 )
             },
@@ -291,7 +302,10 @@ fun BoopScaffold(
                 )
             },
             text = {
-                Text(text = "Received profile from $profileName")
+                Text(
+                    text = "Received profile from $profileName",
+                    style = MaterialTheme.typography.bodyLarge
+                )
             },
             confirmButton = {
                 NeoBrutalistButton(onClick = onSaveReceivedProfile) {
@@ -310,25 +324,32 @@ fun BoopScaffold(
     transferUiState.error?.let { errorMessage ->
         AlertDialog(
             onDismissRequest = onDismissError,
+            shape = BoopShapeMedium,
+            containerColor = MaterialTheme.colorScheme.surface,
             icon = {
                 Icon(
                     imageVector = Icons.Filled.Warning,
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.error
+                    tint = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.size(36.dp)
                 )
             },
             title = {
                 Text(
-                    text = "Error",
+                    text = "Something went wrong",
                     fontWeight = FontWeight.ExtraBold
                 )
             },
             text = {
-                Text(text = errorMessage)
+                Text(
+                    text = errorMessage,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             },
             confirmButton = {
                 TextButton(onClick = onDismissError) {
-                    Text("OK", fontWeight = FontWeight.Bold)
+                    Text("Dismiss", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
                 }
             }
         )
@@ -338,11 +359,14 @@ fun BoopScaffold(
     if (transferUiState.nfcDisabledWarning) {
         AlertDialog(
             onDismissRequest = onDismissNfcWarning,
+            shape = BoopShapeMedium,
+            containerColor = MaterialTheme.colorScheme.surface,
             icon = {
                 Icon(
-                    imageVector = Icons.Filled.Warning,
+                    imageVector = Icons.Filled.Nfc,
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.error
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(36.dp)
                 )
             },
             title = {
@@ -352,19 +376,23 @@ fun BoopScaffold(
                 )
             },
             text = {
-                Text(text = "Boop requires NFC to discover nearby devices. Please enable NFC in your device settings.")
+                Text(
+                    text = "Boop requires NFC to discover nearby devices. Please enable NFC in your device settings.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             },
             confirmButton = {
                 TextButton(onClick = {
                     onDismissNfcWarning()
                     context.startActivity(Intent(Settings.ACTION_NFC_SETTINGS))
                 }) {
-                    Text("Open Settings", fontWeight = FontWeight.Bold)
+                    Text("Open Settings", fontWeight = FontWeight.Bold, color = LocalBoopTokens.current.accent)
                 }
             },
             dismissButton = {
                 TextButton(onClick = onDismissNfcWarning) {
-                    Text("Dismiss", fontWeight = FontWeight.Bold)
+                    Text("Dismiss", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         )
@@ -374,11 +402,14 @@ fun BoopScaffold(
     if (transferUiState.wifiDisabledWarning) {
         AlertDialog(
             onDismissRequest = onDismissWifiWarning,
+            shape = BoopShapeMedium,
+            containerColor = MaterialTheme.colorScheme.surface,
             icon = {
                 Icon(
                     imageVector = Icons.Filled.Warning,
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.error
+                    tint = com.shashsam.boop.ui.theme.WarningAmber,
+                    modifier = Modifier.size(36.dp)
                 )
             },
             title = {
@@ -388,19 +419,23 @@ fun BoopScaffold(
                 )
             },
             text = {
-                Text(text = "Boop needs Wi-Fi Direct for file transfers. If your hotspot is on, please turn it off.")
+                Text(
+                    text = "Boop needs Wi-Fi Direct for file transfers. If your hotspot is on, please turn it off.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             },
             confirmButton = {
                 TextButton(onClick = {
                     onDismissWifiWarning()
                     context.startActivity(Intent(Settings.ACTION_WIFI_SETTINGS))
                 }) {
-                    Text("Open Settings", fontWeight = FontWeight.Bold)
+                    Text("Open Settings", fontWeight = FontWeight.Bold, color = LocalBoopTokens.current.accent)
                 }
             },
             dismissButton = {
                 TextButton(onClick = onDismissWifiWarning) {
-                    Text("Dismiss", fontWeight = FontWeight.Bold)
+                    Text("Dismiss", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         )
@@ -410,11 +445,14 @@ fun BoopScaffold(
     if (transferUiState.hotspotWarning) {
         AlertDialog(
             onDismissRequest = onDismissHotspotWarning,
+            shape = BoopShapeMedium,
+            containerColor = MaterialTheme.colorScheme.surface,
             icon = {
                 Icon(
                     imageVector = Icons.Filled.Warning,
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.error
+                    tint = com.shashsam.boop.ui.theme.WarningAmber,
+                    modifier = Modifier.size(36.dp)
                 )
             },
             title = {
@@ -424,19 +462,23 @@ fun BoopScaffold(
                 )
             },
             text = {
-                Text(text = "Wi-Fi hotspot can interfere with Wi-Fi Direct file transfers. Please turn off your hotspot before using Boop.")
+                Text(
+                    text = "Wi-Fi hotspot can interfere with Wi-Fi Direct transfers. Please turn off your hotspot before using Boop.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             },
             confirmButton = {
                 TextButton(onClick = {
                     onDismissHotspotWarning()
                     context.startActivity(Intent(Settings.ACTION_WIRELESS_SETTINGS))
                 }) {
-                    Text("Turn Off Hotspot", fontWeight = FontWeight.Bold)
+                    Text("Turn Off Hotspot", fontWeight = FontWeight.Bold, color = LocalBoopTokens.current.accent)
                 }
             },
             dismissButton = {
                 TextButton(onClick = onDismissHotspotWarning) {
-                    Text("Dismiss", fontWeight = FontWeight.Bold)
+                    Text("Dismiss", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         )
@@ -457,6 +499,7 @@ private fun TransferApprovalBottomSheet(
     onDismiss: () -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val tokens = LocalBoopTokens.current
 
     // Prefer sender's display name, fall back to SSID-derived device name
     val deviceName = payload.displayName.takeIf { it.isNotBlank() }
@@ -466,25 +509,31 @@ private fun TransferApprovalBottomSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = MaterialTheme.colorScheme.surface
+        containerColor = MaterialTheme.colorScheme.surface,
+        dragHandle = {
+            // Subtle drag handle
+            Box(
+                modifier = Modifier
+                    .padding(top = 12.dp, bottom = 4.dp)
+                    .size(width = 40.dp, height = 4.dp)
+                    .background(
+                        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f),
+                        shape = androidx.compose.foundation.shape.RoundedCornerShape(2.dp)
+                    )
+            )
+        }
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 24.dp)
-                .padding(bottom = 36.dp),
+                .padding(bottom = 40.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Icon(
-                imageVector = Icons.Filled.Nfc,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(40.dp)
-            )
-
+            // Device name prominently displayed
             Text(
-                text = "Incoming Transfer",
+                text = deviceName,
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.ExtraBold,
                 color = MaterialTheme.colorScheme.onSurface
@@ -492,16 +541,16 @@ private fun TransferApprovalBottomSheet(
 
             Text(
                 text = if (payload.fileCount > 1)
-                    "$deviceName wants to send you ${payload.fileCount} files"
+                    "wants to send you ${payload.fileCount} files"
                 else
-                    "$deviceName wants to send you a file",
+                    "wants to send you a file",
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // Accept button
+            // Accept button — primary action
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -517,7 +566,7 @@ private fun TransferApprovalBottomSheet(
                 }
             }
 
-            // Accept + Become Friends button
+            // Accept + Become Friends button — secondary action with icon
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -527,7 +576,7 @@ private fun TransferApprovalBottomSheet(
                     onClick = onApproveAndBefriend
                 ) {
                     Icon(
-                        imageVector = Icons.Filled.Nfc,
+                        imageVector = Icons.Filled.PersonAdd,
                         contentDescription = null,
                         modifier = Modifier.size(18.dp)
                     )
@@ -539,7 +588,7 @@ private fun TransferApprovalBottomSheet(
                 }
             }
 
-            // Reject button
+            // Reject button — tertiary/destructive
             TextButton(
                 onClick = onReject,
                 modifier = Modifier.fillMaxWidth()
@@ -547,7 +596,7 @@ private fun TransferApprovalBottomSheet(
                 Text(
                     text = "Reject",
                     fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.error
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }

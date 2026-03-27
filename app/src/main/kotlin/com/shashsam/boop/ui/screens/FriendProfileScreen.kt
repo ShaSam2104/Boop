@@ -17,11 +17,18 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.PersonRemove
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -31,6 +38,7 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.shashsam.boop.data.FriendEntity
 import com.shashsam.boop.ui.components.BentoGrid
+import com.shashsam.boop.ui.theme.BoopShapeMedium
 import com.shashsam.boop.ui.theme.GlassCard
 import com.shashsam.boop.ui.theme.LocalBoopTokens
 import com.shashsam.boop.ui.theme.NeoBrutalistButton
@@ -58,6 +66,7 @@ fun FriendProfileScreen(
     val tokens = LocalBoopTokens.current
     val dateFormat = SimpleDateFormat("MMM d, yyyy", Locale.getDefault())
     val profileItems = ProfileViewModel.parseProfileJson(friend.profileJson)
+    var showRemoveConfirmation by remember { mutableStateOf(false) }
 
     Column(
         modifier = modifier
@@ -154,17 +163,69 @@ fun FriendProfileScreen(
             Spacer(modifier = Modifier.height(16.dp))
 
             // ── Remove friend button ─────────────────────────────────────
-            NeoBrutalistButton(
-                onClick = { onRemoveFriend(friend.id) }
+            TextButton(
+                onClick = { showRemoveConfirmation = true },
+                modifier = Modifier.fillMaxWidth()
             ) {
                 Text(
                     text = "Remove Friend",
-                    fontWeight = FontWeight.ExtraBold,
+                    fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.error
                 )
             }
 
             Spacer(modifier = Modifier.height(16.dp))
         }
+    }
+
+    // ── Remove confirmation dialog ─────────────────────────────────────
+    if (showRemoveConfirmation) {
+        AlertDialog(
+            onDismissRequest = { showRemoveConfirmation = false },
+            shape = BoopShapeMedium,
+            containerColor = MaterialTheme.colorScheme.surface,
+            icon = {
+                Icon(
+                    imageVector = Icons.Filled.PersonRemove,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.size(36.dp)
+                )
+            },
+            title = {
+                Text(
+                    text = "Remove ${friend.displayName}?",
+                    fontWeight = FontWeight.ExtraBold
+                )
+            },
+            text = {
+                Text(
+                    text = "They won't be notified and you'll need to re-add them via a file transfer.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showRemoveConfirmation = false
+                    onRemoveFriend(friend.id)
+                }) {
+                    Text(
+                        text = "Remove",
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRemoveConfirmation = false }) {
+                    Text(
+                        text = "Cancel",
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        )
     }
 }

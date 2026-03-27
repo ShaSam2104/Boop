@@ -66,6 +66,7 @@ import com.shashsam.boop.ui.theme.BoopShapeMedium
 import com.shashsam.boop.ui.theme.GlassCard
 import com.shashsam.boop.ui.theme.LocalBoopTokens
 import com.shashsam.boop.ui.theme.NeoBrutalistButton
+import com.shashsam.boop.utils.rememberBoopHaptics
 import com.shashsam.boop.ui.viewmodels.SettingsUiState
 import java.io.File
 import java.text.SimpleDateFormat
@@ -96,6 +97,7 @@ fun ProfileScreen(
     Log.d(TAG, "ProfileScreen composed — friends=${friends.size} items=${profileItems.size}")
 
     val tokens = LocalBoopTokens.current
+    val haptics = rememberBoopHaptics()
     val deviceName = "${Build.MANUFACTURER.replaceFirstChar { it.uppercase() }} ${Build.MODEL}"
     var showNameDialog by remember { mutableStateOf(false) }
     var showAddDialog by remember { mutableStateOf(false) }
@@ -176,7 +178,7 @@ fun ProfileScreen(
                             style = MaterialTheme.typography.headlineMedium,
                             fontWeight = FontWeight.ExtraBold,
                             color = MaterialTheme.colorScheme.onBackground,
-                            modifier = Modifier.clickable { showNameDialog = true }
+                            modifier = Modifier.clickable { haptics.tick(); showNameDialog = true }
                         )
                         Text(
                             text = deviceName,
@@ -247,7 +249,7 @@ fun ProfileScreen(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable(onClick = onShareProfileClick)
+                            .clickable(onClick = { haptics.click(); onShareProfileClick() })
                             .padding(horizontal = 16.dp, vertical = 14.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {

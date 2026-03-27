@@ -331,9 +331,9 @@ private fun SettingsToggleRow(
                     checkedThumbColor = BoopBlack,
                     checkedTrackColor = BoopAccentYellow,
                     checkedBorderColor = BoopAccentYellow,
-                    uncheckedThumbColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    uncheckedThumbColor = MaterialTheme.colorScheme.outline,
                     uncheckedTrackColor = MaterialTheme.colorScheme.surfaceVariant,
-                    uncheckedBorderColor = MaterialTheme.colorScheme.outline
+                    uncheckedBorderColor = MaterialTheme.colorScheme.outlineVariant
                 )
             )
         }
@@ -396,9 +396,9 @@ private fun SettingsDivider(modifier: Modifier = Modifier) {
     HorizontalDivider(
         modifier = modifier
             .fillMaxWidth()
-            .alpha(0.15f)
+            .alpha(0.12f)
             .padding(horizontal = 16.dp),
-        thickness = 1.dp,
+        thickness = 0.5.dp,
         color = MaterialTheme.colorScheme.onBackground
     )
 }

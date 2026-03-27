@@ -142,7 +142,7 @@ fun HomeScreen(
                     Icon(
                         imageVector = Icons.Filled.Info,
                         contentDescription = "NFC Guide",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        tint = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
                         modifier = Modifier.size(26.dp)
                     )
                 }

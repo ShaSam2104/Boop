@@ -1,6 +1,12 @@
 package com.shashsam.boop.ui.screens
 
 import android.util.Log
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -19,15 +25,16 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FolderZip
-import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -37,6 +44,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -75,6 +83,18 @@ fun TransferProgressScreen(
     val outerRingColor = tokens.concentricOuter
     val innerRingColor = tokens.concentricInner
 
+    // Rotating dashed ring during active transfer
+    val ringTransition = rememberInfiniteTransition(label = "ringRotation")
+    val ringRotation by ringTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(6000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "dashRotation"
+    )
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -107,15 +127,8 @@ fun TransferProgressScreen(
                 color = MaterialTheme.colorScheme.onBackground
             )
 
-            IconButton(onClick = {
-                Log.d(TAG, "More options clicked")
-            }) {
-                Icon(
-                    imageVector = Icons.Filled.MoreVert,
-                    contentDescription = "More options",
-                    tint = MaterialTheme.colorScheme.onBackground
-                )
-            }
+            // Balance spacer (same width as back IconButton)
+            Spacer(modifier = Modifier.size(48.dp))
         }
 
         // ── Concentric circles with percentage ─────────────────────────────
@@ -128,20 +141,22 @@ fun TransferProgressScreen(
                     val centerY = size.height / 2
                     val maxRadius = minOf(size.width, size.height) / 2 - 8.dp.toPx()
 
-                    // Dashed outer circle
-                    drawCircle(
-                        color = dashedRingColor,
-                        radius = maxRadius,
-                        center = Offset(centerX, centerY),
-                        style = Stroke(
-                            width = 1.5.dp.toPx(),
-                            pathEffect = PathEffect.dashPathEffect(
-                                floatArrayOf(8.dp.toPx(), 6.dp.toPx()),
-                                0f
-                            ),
-                            cap = StrokeCap.Round
+                    // Dashed outer circle — rotates during active transfer
+                    rotate(degrees = ringRotation, pivot = Offset(centerX, centerY)) {
+                        drawCircle(
+                            color = dashedRingColor,
+                            radius = maxRadius,
+                            center = Offset(centerX, centerY),
+                            style = Stroke(
+                                width = 1.5.dp.toPx(),
+                                pathEffect = PathEffect.dashPathEffect(
+                                    floatArrayOf(8.dp.toPx(), 6.dp.toPx()),
+                                    0f
+                                ),
+                                cap = StrokeCap.Round
+                            )
                         )
-                    )
+                    }
 
                     // Dark solid ring
                     val solidRingRadius = maxRadius - 16.dp.toPx()
@@ -164,6 +179,17 @@ fun TransferProgressScreen(
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
+                if (transferUiState.transferComplete) {
+                    // Completion checkmark
+                    Icon(
+                        imageVector = Icons.Filled.CheckCircle,
+                        contentDescription = "Transfer complete",
+                        tint = BoopAccentYellow,
+                        modifier = Modifier.size(48.dp)
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
+
                 // Large percentage
                 Text(
                     text = "$percentageInt%",
@@ -181,7 +207,7 @@ fun TransferProgressScreen(
 
                 // Status text — italic serif like "Boop?" on home
                 Text(
-                    text = if (transferUiState.transferComplete) "Complete!" else "Transfering...",
+                    text = if (transferUiState.transferComplete) "Complete!" else "Transferring...",
                     style = MaterialTheme.typography.headlineSmall.copy(
                         fontFamily = FontFamily.Serif,
                         fontStyle = FontStyle.Italic,
