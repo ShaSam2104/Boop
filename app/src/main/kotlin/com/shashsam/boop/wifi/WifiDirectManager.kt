@@ -13,6 +13,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -261,37 +262,62 @@ class WifiDirectManager(private val context: Context) {
             })
         }
 
-        return suspendCancellableCoroutine { cont ->
-            mgr.createGroup(ch, object : WifiP2pManager.ActionListener {
-                override fun onSuccess() {
-                    Log.d(TAG, "createGroup onSuccess — requesting group info")
-                    queryGroupInfoWithRetry(mgr, ch, retriesLeft = 5) { group ->
-                        val ownerMac = group?.owner?.deviceAddress
-                        val mac = ownerMac ?: _ownDeviceMac.value
-                        if (mac == null) {
-                            Log.w(TAG, "Own MAC not available from group.owner or THIS_DEVICE_CHANGED — using placeholder")
-                        } else {
-                            Log.d(TAG, "Resolved own MAC: $mac (source=${if (ownerMac != null) "group.owner" else "THIS_DEVICE_CHANGED"})")
-                        }
-                        Log.d(TAG, "Group info: name=${group?.networkName} passphrase=${if (group?.passphrase != null) "***" else "null"}")
-                        _state.value = WifiDirectState.GroupCreated(
-                            deviceMac = mac ?: "00:00:00:00:00:00",
-                            groupOwnerAddress = GROUP_OWNER_IP,
-                            ssid = group?.networkName ?: "",
-                            passphrase = group?.passphrase ?: ""
-                        )
-                    }
-                    if (cont.isActive) cont.resume(true)
-                }
+        // Give the framework time to fully tear down the previous group.
+        // Without this delay, createGroup may get BUSY even after removeGroup succeeds.
+        delay(300)
 
-                override fun onFailure(reason: Int) {
-                    val msg = "createGroup failed: ${reason.toReasonString()}"
-                    Log.e(TAG, msg)
-                    _state.value = WifiDirectState.Error(msg)
-                    if (cont.isActive) cont.resume(false)
-                }
-            })
+        // Retry createGroup up to 3 times with increasing delay for BUSY errors.
+        for (attempt in 0..CREATE_GROUP_MAX_RETRIES) {
+            val result = suspendCancellableCoroutine { cont ->
+                mgr.createGroup(ch, object : WifiP2pManager.ActionListener {
+                    override fun onSuccess() {
+                        Log.d(TAG, "createGroup onSuccess (attempt $attempt) — requesting group info")
+                        queryGroupInfoWithRetry(mgr, ch, retriesLeft = 5) { group ->
+                            val ownerMac = group?.owner?.deviceAddress
+                            val mac = ownerMac ?: _ownDeviceMac.value
+                            if (mac == null) {
+                                Log.w(TAG, "Own MAC not available from group.owner or THIS_DEVICE_CHANGED — using placeholder")
+                            } else {
+                                Log.d(TAG, "Resolved own MAC: $mac (source=${if (ownerMac != null) "group.owner" else "THIS_DEVICE_CHANGED"})")
+                            }
+                            Log.d(TAG, "Group info: name=${group?.networkName} passphrase=${if (group?.passphrase != null) "***" else "null"}")
+                            _state.value = WifiDirectState.GroupCreated(
+                                deviceMac = mac ?: "00:00:00:00:00:00",
+                                groupOwnerAddress = GROUP_OWNER_IP,
+                                ssid = group?.networkName ?: "",
+                                passphrase = group?.passphrase ?: ""
+                            )
+                        }
+                        if (cont.isActive) cont.resume(CREATE_GROUP_SUCCESS)
+                    }
+
+                    override fun onFailure(reason: Int) {
+                        Log.e(TAG, "createGroup failed (attempt $attempt): ${reason.toReasonString()}")
+                        if (cont.isActive) cont.resume(reason)
+                    }
+                })
+            }
+
+            if (result == CREATE_GROUP_SUCCESS) return true
+
+            // Retry only on BUSY — other errors are terminal
+            if (result != WifiP2pManager.BUSY || attempt == CREATE_GROUP_MAX_RETRIES) {
+                _state.value = WifiDirectState.Error("createGroup failed: ${result.toReasonString()}")
+                return false
+            }
+
+            val retryDelay = CREATE_GROUP_RETRY_DELAY_MS * (attempt + 1)
+            Log.d(TAG, "createGroup BUSY — retrying in ${retryDelay}ms (attempt ${attempt + 1}/${CREATE_GROUP_MAX_RETRIES + 1})")
+            delay(retryDelay)
         }
+        return false
+    }
+
+    companion object {
+        /** Sentinel value indicating createGroup succeeded (no WifiP2pManager constant uses -1). */
+        private const val CREATE_GROUP_SUCCESS = -1
+        private const val CREATE_GROUP_MAX_RETRIES = 3
+        private const val CREATE_GROUP_RETRY_DELAY_MS = 500L
     }
 
     /**
@@ -456,9 +482,25 @@ class WifiDirectManager(private val context: Context) {
         Log.d(TAG, "requestConnectionInfo()")
     }
 
-    /** Tears down any active Wi-Fi Direct group and resets [state] to [WifiDirectState.Idle]. */
+    /** Tears down any active Wi-Fi Direct group, cancels pending connects, and resets [state] to [WifiDirectState.Idle]. */
     suspend fun reset() {
-        Log.d(TAG, "reset() — removing group before resetting to Idle")
+        Log.d(TAG, "reset() — cancelling connect + removing group before resetting to Idle")
+        val mgr = manager
+        val ch = channel
+        if (mgr != null && ch != null) {
+            suspendCancellableCoroutine { cont ->
+                mgr.cancelConnect(ch, object : WifiP2pManager.ActionListener {
+                    override fun onSuccess() {
+                        Log.d(TAG, "reset cancelConnect succeeded")
+                        if (cont.isActive) cont.resume(Unit)
+                    }
+                    override fun onFailure(reason: Int) {
+                        Log.d(TAG, "reset cancelConnect failed: ${reason.toReasonString()} (no pending — OK)")
+                        if (cont.isActive) cont.resume(Unit)
+                    }
+                })
+            }
+        }
         removeGroup()
         _state.value = WifiDirectState.Idle
     }

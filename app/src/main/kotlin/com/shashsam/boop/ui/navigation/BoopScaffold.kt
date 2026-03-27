@@ -135,7 +135,12 @@ fun BoopScaffold(
             Log.d(TAG, "Transfer complete — navigating back after delay")
             kotlinx.coroutines.delay(1000)
             navController.popBackStack(BoopRoute.Home.route, inclusive = false)
-            onResetToReceive()
+            // Don't reset yet — the transfer job handles friend exchange
+            // and will auto-reset when the full flow completes.
+            // Only reset for simple receiver flows (no friend exchange).
+            if (!transferUiState.isSendMode && transferUiState.pendingFriendRequest == null) {
+                onResetToReceive()
+            }
         }
     }
 

@@ -234,7 +234,7 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
         BoopHceService.connectionFileCount = 1
         BoopHceService.connectionDisplayName = settingsPrefs.getString("display_name", "") ?: ""
         _uiState.update {
-            it.copy(isSendMode = true, isReceiveMode = false, error = null, transferComplete = false)
+            it.copy(isSendMode = true, isReceiveMode = false, isNfcReading = false, error = null, transferComplete = false)
         }
         appendLog("📤 Send mode activated.")
         viewModelScope.launch {
@@ -287,6 +287,9 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
                 senderProfile = senderProfile,
                 friendDecision = friendDecisionDeferred
             ).collect { progress -> handleSenderProgress(progress) }
+            // Flow completed — friend exchange done or timed out. Auto-reset.
+            Log.d(TAG, "Send flow completed, auto-resetting to receive")
+            resetToReceive()
         }
     }
 
@@ -338,6 +341,9 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
                 senderProfile = senderProfile,
                 friendDecision = friendDecisionDeferred
             ).collect { progress -> handleSenderProgress(progress) }
+            // Flow completed — friend exchange done or timed out. Auto-reset.
+            Log.d(TAG, "Multi-file send flow completed, auto-resetting to receive")
+            resetToReceive()
         }
     }
 
@@ -587,12 +593,16 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
                 ).collect { progress ->
                     if (progress.friendProfile != null) {
                         handleFriendProfileReceived(progress.friendProfile)
+                        _uiState.update { it.copy(friendExchangeComplete = true) }
                     } else if (details.fileCount > 1) {
                         handleMultiFileProgress(progress)
                     } else {
                         handleTransferProgress(progress)
                     }
                 }
+                // Friend exchange flow completed — auto-reset
+                Log.d(TAG, "Receive with friend exchange completed, auto-resetting")
+                resetToReceive()
             } else if (details.fileCount > 1) {
                 TransferManager.receiveFiles(context, GROUP_OWNER_IP, details.port)
                     .collect { progress -> handleMultiFileProgress(progress) }
@@ -649,6 +659,7 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
         friendDecisionDeferred?.complete(false)
         friendDecisionDeferred = null
         _uiState.update { it.copy(pendingFriendRequest = null) }
+        // The transfer job will complete after sending NAK, triggering auto-reset
     }
 
     private fun handleFriendProfileReceived(profile: ProfileData) {
@@ -720,7 +731,7 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
 
     // ─── Profile sharing via NFC ──────────────────────────────────────────
 
-    fun prepareProfileShare() {
+    fun prepareProfileShare(profileData: ProfileData) {
         Log.d(TAG, "prepareProfileShare()")
         TransferManager.cleanup()
         transferJob?.cancel()
@@ -732,32 +743,32 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
                 isProfileShareMode = true,
                 isSendMode = true,
                 isReceiveMode = false,
+                isNfcReading = false,
                 error = null,
                 transferComplete = false
             )
         }
-        viewModelScope.launch {
+        transferJob = viewModelScope.launch {
+            // 1. Reset stale Wi-Fi Direct state
             wifiDirectManager.reset()
+            // 2. Create group and wait for it
             val ok = wifiDirectManager.createGroup()
             if (!ok) {
                 appendLog("❌ Failed to create Wi-Fi Direct group for profile share.", isError = true)
                 _uiState.update { it.copy(isProfileShareMode = false) }
+                return@launch
             }
-        }
-    }
-
-    fun cancelProfileShare() {
-        Log.d(TAG, "cancelProfileShare()")
-        BoopHceService.connectionType = "file"
-        _uiState.update { it.copy(isProfileShareMode = false) }
-        resetToReceive()
-    }
-
-    fun startProfileSend(profileData: ProfileData) {
-        Log.d(TAG, "startProfileSend")
-        TransferManager.cleanup()
-        transferJob?.cancel()
-        transferJob = viewModelScope.launch {
+            // 3. Wait for GroupCreated state so HCE has SSID/passphrase
+            val groupReady = withTimeoutOrNull(10_000L) {
+                wifiDirectManager.state.first { it is WifiDirectState.GroupCreated }
+            }
+            if (groupReady == null) {
+                appendLog("❌ Wi-Fi Direct group creation timed out.", isError = true)
+                _uiState.update { it.copy(isProfileShareMode = false) }
+                return@launch
+            }
+            Log.d(TAG, "Group ready, starting profile TCP server")
+            // 4. Now start TCP server — group is ready, NFC is broadcasting
             TransferManager.sendProfile(profileData, BoopHceService.DEFAULT_PORT)
                 .collect { progress ->
                     if (progress.error != null) {
@@ -768,6 +779,13 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
                     }
                 }
         }
+    }
+
+    fun cancelProfileShare() {
+        Log.d(TAG, "cancelProfileShare()")
+        BoopHceService.connectionType = "file"
+        _uiState.update { it.copy(isProfileShareMode = false) }
+        resetToReceive()
     }
 
     fun proceedWithProfileReceive(details: ConnectionDetails) {

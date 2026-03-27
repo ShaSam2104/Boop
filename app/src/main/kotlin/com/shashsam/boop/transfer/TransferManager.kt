@@ -133,6 +133,33 @@ object TransferManager {
     }
 
     /**
+     * Connects to [host]:[port] with retry logic. The sender's server socket may not
+     * be accepting yet when the receiver's Wi-Fi Direct connection completes, so we
+     * retry a few times with a short delay.
+     */
+    private fun connectWithRetry(host: String, port: Int, maxRetries: Int = 5, delayMs: Long = 500): Socket {
+        var lastException: Exception? = null
+        for (attempt in 0..maxRetries) {
+            try {
+                val socket = Socket()
+                socket.connect(InetSocketAddress(host, port), 5_000)
+                socket.configureForTransfer()
+                if (attempt > 0) {
+                    Log.d(TAG, "TCP connect succeeded on attempt ${attempt + 1}")
+                }
+                return socket
+            } catch (e: Exception) {
+                lastException = e
+                if (attempt < maxRetries) {
+                    Log.d(TAG, "TCP connect attempt ${attempt + 1} failed: ${e.message}, retrying in ${delayMs}ms")
+                    Thread.sleep(delayMs)
+                }
+            }
+        }
+        throw lastException ?: java.io.IOException("Failed to connect to $host:$port after $maxRetries retries")
+    }
+
+    /**
      * **Sender side** — opens a [ServerSocket] on [port], accepts one client, sends
      * the file at [fileUri] from MediaStore, and emits [TransferProgress] updates.
      *
@@ -205,8 +232,7 @@ object TransferManager {
         withContext(Dispatchers.IO) {
             var socket: Socket? = null
             try {
-                socket = Socket(groupOwnerAddress, port)
-                socket.configureForTransfer()
+                socket = connectWithRetry(groupOwnerAddress, port)
                 Log.d(TAG, "Connected to $groupOwnerAddress:$port")
                 send(TransferProgress())
 
@@ -322,8 +348,7 @@ object TransferManager {
         withContext(Dispatchers.IO) {
             var socket: Socket? = null
             try {
-                socket = Socket(groupOwnerAddress, port)
-                socket.configureForTransfer()
+                socket = connectWithRetry(groupOwnerAddress, port)
                 Log.d(TAG, "Connected to $groupOwnerAddress:$port")
 
                 val dataIn = DataInputStream(socket.getInputStream().buffered(CHUNK_SIZE))
@@ -578,8 +603,7 @@ object TransferManager {
         withContext(Dispatchers.IO) {
             var socket: Socket? = null
             try {
-                socket = Socket(groupOwnerAddress, port)
-                socket.configureForTransfer()
+                socket = connectWithRetry(groupOwnerAddress, port)
 
                 val dataIn = DataInputStream(socket.getInputStream().buffered(CHUNK_SIZE))
                 val totalFiles = if (fileCount > 1) dataIn.readInt() else 1
@@ -682,8 +706,7 @@ object TransferManager {
         withContext(Dispatchers.IO) {
             var socket: Socket? = null
             try {
-                socket = Socket(groupOwnerAddress, port)
-                socket.configureForTransfer()
+                socket = connectWithRetry(groupOwnerAddress, port)
 
                 val dataIn = DataInputStream(socket.getInputStream().buffered(CHUNK_SIZE))
                 val profile = readFriendRequest(dataIn)

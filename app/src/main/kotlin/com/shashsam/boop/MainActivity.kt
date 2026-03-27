@@ -154,10 +154,12 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
-                    // ── Auto-enable NFC reader mode reactively ──────────────
+                    // ── Auto-toggle NFC reader mode reactively ──────────────
                     LaunchedEffect(uiState.isNfcReading, permissionsGranted) {
                         if (uiState.isNfcReading && permissionsGranted) {
                             nfcReader.enableReaderMode(this@MainActivity)
+                        } else {
+                            nfcReader.disableReaderMode(this@MainActivity)
                         }
                     }
 
@@ -275,8 +277,7 @@ class MainActivity : ComponentActivity() {
                                 profileItemsJson = profileViewModel.buildProfileJson(),
                                 profilePicBytes = profileViewModel.getProfilePicFile()?.readBytes()
                             )
-                            viewModel.prepareProfileShare()
-                            viewModel.startProfileSend(profileData)
+                            viewModel.prepareProfileShare(profileData)
                         },
                         onCancelProfileShare = {
                             viewModel.cancelProfileShare()
