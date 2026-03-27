@@ -177,7 +177,9 @@ fun BoopNavHost(
                     onFriendClick(friend)
                     navController.navigate(BoopRoute.FriendProfile.createRoute(friend.id))
                 },
-                onShareProfileClick = onShareProfileClick
+                onShareProfileClick = onShareProfileClick,
+                onCancelProfileShare = onCancelProfileShare,
+                isProfileSharing = transferUiState.isProfileShareMode
             )
         }
 
