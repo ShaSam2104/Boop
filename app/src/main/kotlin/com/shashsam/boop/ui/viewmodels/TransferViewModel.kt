@@ -24,11 +24,13 @@ import com.shashsam.boop.wifi.WifiDirectState
 import com.shashsam.boop.transfer.ProfileData
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -130,8 +132,14 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
     private var pendingBefriend: Boolean = false
     private var friendDecisionDeferred: CompletableDeferred<Boolean>? = null
 
-    private val _selectedFriend = MutableStateFlow<FriendEntity?>(null)
-    val selectedFriend: StateFlow<FriendEntity?> = _selectedFriend.asStateFlow()
+    private val _selectedFriendId = MutableStateFlow<Long?>(null)
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    val selectedFriend: StateFlow<FriendEntity?> = _selectedFriendId
+        .flatMapLatest { id ->
+            if (id != null) friendDao.getByIdFlow(id)
+            else kotlinx.coroutines.flow.flowOf(null)
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
     private val _uiState = MutableStateFlow(TransferUiState())
 
@@ -189,6 +197,9 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
                         BoopHceService.connectionPort = BoopHceService.DEFAULT_PORT
                         BoopHceService.connectionSsid = wifiState.ssid
                         BoopHceService.connectionToken = wifiState.passphrase
+                        // Track our own SSID so handleFriendProfileReceived can save
+                        // the receiver's profile keyed by this group's SSID.
+                        currentConnectionSsid = wifiState.ssid
                         _uiState.update {
                             it.copy(isWifiConnecting = false, isNfcBroadcasting = true)
                         }
@@ -241,6 +252,7 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
             val ok = wifiDirectManager.createGroup()
             if (!ok) {
                 appendLog("❌ Failed to create Wi-Fi Direct group.", isError = true)
+                _uiState.update { it.copy(error = "Failed to create Wi-Fi Direct group. Try again.") }
             }
         }
     }
@@ -281,15 +293,17 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
                     pendingFileUris = listOf(fileUri)
                 )
             }
-            val senderProfile = buildLocalProfile()
-            TransferManager.sendFilesWithFriendExchange(
-                context, listOf(fileUri), BoopHceService.DEFAULT_PORT,
-                senderProfile = senderProfile,
-                friendDecision = friendDecisionDeferred
-            ).collect { progress -> handleSenderProgress(progress) }
-            // Flow completed — friend exchange done or timed out. Auto-reset.
-            Log.d(TAG, "Send flow completed, auto-resetting to receive")
-            resetToReceive()
+            try {
+                val senderProfile = buildLocalProfile()
+                TransferManager.sendFilesWithFriendExchange(
+                    context, listOf(fileUri), BoopHceService.DEFAULT_PORT,
+                    senderProfile = senderProfile,
+                    friendDecision = friendDecisionDeferred
+                ).collect { progress -> handleSenderProgress(progress) }
+            } finally {
+                Log.d(TAG, "Send flow completed, cleaning up resources")
+                cleanupTransferResources()
+            }
         }
     }
 
@@ -335,15 +349,17 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
                     pendingFileUris = fileUris
                 )
             }
-            val senderProfile = buildLocalProfile()
-            TransferManager.sendFilesWithFriendExchange(
-                context, fileUris, BoopHceService.DEFAULT_PORT,
-                senderProfile = senderProfile,
-                friendDecision = friendDecisionDeferred
-            ).collect { progress -> handleSenderProgress(progress) }
-            // Flow completed — friend exchange done or timed out. Auto-reset.
-            Log.d(TAG, "Multi-file send flow completed, auto-resetting to receive")
-            resetToReceive()
+            try {
+                val senderProfile = buildLocalProfile()
+                TransferManager.sendFilesWithFriendExchange(
+                    context, fileUris, BoopHceService.DEFAULT_PORT,
+                    senderProfile = senderProfile,
+                    friendDecision = friendDecisionDeferred
+                ).collect { progress -> handleSenderProgress(progress) }
+            } finally {
+                Log.d(TAG, "Multi-file send flow completed, cleaning up resources")
+                cleanupTransferResources()
+            }
         }
     }
 
@@ -419,7 +435,14 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
         when {
             progress.friendRequest != null -> {
                 Log.d(TAG, "Friend request received from: ${progress.friendRequest.displayName}")
-                _uiState.update { it.copy(pendingFriendRequest = progress.friendRequest) }
+                // Sender auto-accepts all friend requests — the sender already chose
+                // to share files with this person. The receiver controls the decision
+                // via the 3-button approval sheet (Accept / Accept+Befriend / Reject).
+                Log.d(TAG, "Auto-accepting friend request from ${progress.friendRequest.displayName}")
+                friendDecisionDeferred?.complete(true)
+                friendDecisionDeferred = null
+                handleFriendProfileReceived(progress.friendRequest)
+                _uiState.update { it.copy(friendExchangeComplete = true) }
             }
             progress.friendProfile != null -> {
                 handleFriendProfileReceived(progress.friendProfile)
@@ -503,9 +526,11 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
         // Check receive permission setting
         val permission = settingsPrefs.getString("receive_permission", "friends") ?: "friends"
         viewModelScope.launch {
-            val autoAccept = permission == "friends" && isFriend(details.ssid)
-            if (autoAccept) {
-                Log.d(TAG, "Auto-accepting transfer from friend SSID=${details.ssid}")
+            val knownFriend = permission == "friends" && isFriend(details.ssid)
+            if (knownFriend) {
+                Log.d(TAG, "Auto-accepting transfer from friend SSID=${details.ssid}, will reshare profiles")
+                // Always exchange profiles with friends to keep them fresh
+                pendingBefriend = true
                 proceedWithReceive(details)
             } else {
                 Log.d(TAG, "Awaiting user approval for transfer from SSID=${details.ssid}")
@@ -534,112 +559,88 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
         val context = getApplication<Application>()
         transferJob?.cancel()
         transferJob = viewModelScope.launch {
-            // 1. Join the Sender's Wi-Fi Direct group by SSID + passphrase
-            val queued = wifiDirectManager.connect(details.ssid, details.token, details.mac)
-            if (!queued) {
-                appendLog("❌ Wi-Fi Direct connection request rejected.", isError = true)
-                _uiState.update { it.copy(error = "Wi-Fi Direct connection request was rejected.") }
-                return@launch
-            }
-
-            // 2. Wait for Connected state with a 10 s timeout.
-            appendLog("⏳ Establishing Wi-Fi Direct link…")
-            val result = withTimeoutOrNull(CONNECTION_TIMEOUT_MS) {
-                wifiDirectManager.state.first { state ->
-                    state is WifiDirectState.Connected || state is WifiDirectState.Error
-                }
-            }
-
-            when {
-                result == null -> {
-                    Log.w(TAG, "Wi-Fi Direct connection timed out after ${CONNECTION_TIMEOUT_MS}ms")
-                    appendLog("❌ Connection timed out.", isError = true)
-                    // Clean up the stale P2P connection request.
-                    wifiDirectManager.disconnect()
-                    _uiState.update {
-                        it.copy(
-                            isWifiConnecting = false,
-                            error = "Wi-Fi Direct connection timed out. Move closer and try again."
-                        )
-                    }
-                    return@launch
-                }
-                result is WifiDirectState.Error -> {
-                    // Error state already handled by observeWifiDirectState; just bail.
-                    return@launch
-                }
-            }
-
-            // 3. Connected — open TCP receive on the Group Owner IP.
-            Log.d(TAG, "Wi-Fi Direct connected — starting TCP receive on ${GROUP_OWNER_IP}:${details.port} (fileCount=${details.fileCount})")
-            appendLog("🚀 Starting file receive (${GROUP_OWNER_IP}:${details.port})…")
+            // Show transfer screen immediately so the receiver gets visual feedback
+            // that something is happening right after NFC tap / approval.
             _uiState.update {
                 it.copy(
                     isTransferring = true,
                     transferProgress = 0f,
                     transferComplete = false,
-                    receivedPayload = null,
                     pendingApproval = null,
                     totalFiles = details.fileCount
                 )
             }
-            if (pendingBefriend) {
-                val localProfile = buildLocalProfile()
-                TransferManager.receiveFilesWithFriendExchange(
-                    context, GROUP_OWNER_IP, details.port,
-                    fileCount = details.fileCount,
-                    becomeFriends = true,
-                    localProfile = localProfile
-                ).collect { progress ->
-                    if (progress.friendProfile != null) {
-                        handleFriendProfileReceived(progress.friendProfile)
-                        _uiState.update { it.copy(friendExchangeComplete = true) }
-                    } else if (details.fileCount > 1) {
-                        handleMultiFileProgress(progress)
-                    } else {
-                        handleTransferProgress(progress)
+            try {
+                // 1. Join the Sender's Wi-Fi Direct group by SSID + passphrase
+                val queued = wifiDirectManager.connect(details.ssid, details.token, details.mac)
+                if (!queued) {
+                    appendLog("❌ Wi-Fi Direct connection request rejected.", isError = true)
+                    _uiState.update { it.copy(error = "Wi-Fi Direct connection request was rejected.") }
+                    return@launch
+                }
+
+                // 2. Wait for Connected state with a 10 s timeout.
+                appendLog("⏳ Establishing Wi-Fi Direct link…")
+                val result = withTimeoutOrNull(CONNECTION_TIMEOUT_MS) {
+                    wifiDirectManager.state.first { state ->
+                        state is WifiDirectState.Connected || state is WifiDirectState.Error
                     }
                 }
-                // Friend exchange flow completed — auto-reset
-                Log.d(TAG, "Receive with friend exchange completed, auto-resetting")
-                resetToReceive()
-            } else if (details.fileCount > 1) {
-                TransferManager.receiveFiles(context, GROUP_OWNER_IP, details.port)
-                    .collect { progress -> handleMultiFileProgress(progress) }
-            } else {
-                TransferManager.receiveFile(context, GROUP_OWNER_IP, details.port)
-                    .collect { progress -> handleTransferProgress(progress) }
+
+                when {
+                    result == null -> {
+                        Log.w(TAG, "Wi-Fi Direct connection timed out after ${CONNECTION_TIMEOUT_MS}ms")
+                        appendLog("❌ Connection timed out.", isError = true)
+                        _uiState.update {
+                            it.copy(
+                                isWifiConnecting = false,
+                                error = "Wi-Fi Direct connection timed out. Move closer and try again."
+                            )
+                        }
+                        return@launch
+                    }
+                    result is WifiDirectState.Error -> {
+                        return@launch
+                    }
+                }
+
+                // 3. Connected — open TCP receive on the Group Owner IP.
+                Log.d(TAG, "Wi-Fi Direct connected — starting TCP receive on ${GROUP_OWNER_IP}:${details.port} (fileCount=${details.fileCount})")
+                appendLog("🚀 Starting file receive (${GROUP_OWNER_IP}:${details.port})…")
+                if (pendingBefriend) {
+                    val localProfile = buildLocalProfile()
+                    TransferManager.receiveFilesWithFriendExchange(
+                        context, GROUP_OWNER_IP, details.port,
+                        fileCount = details.fileCount,
+                        becomeFriends = true,
+                        localProfile = localProfile
+                    ).collect { progress ->
+                        if (progress.friendProfile != null) {
+                            handleFriendProfileReceived(progress.friendProfile)
+                            _uiState.update { it.copy(friendExchangeComplete = true) }
+                        } else if (details.fileCount > 1) {
+                            handleMultiFileProgress(progress)
+                        } else {
+                            handleTransferProgress(progress)
+                        }
+                    }
+                } else if (details.fileCount > 1) {
+                    TransferManager.receiveFiles(context, GROUP_OWNER_IP, details.port)
+                        .collect { progress -> handleMultiFileProgress(progress) }
+                } else {
+                    TransferManager.receiveFile(context, GROUP_OWNER_IP, details.port)
+                        .collect { progress -> handleTransferProgress(progress) }
+                }
+            } finally {
+                // Clean up resources but preserve UI state so BoopScaffold can
+                // show completion and navigate back before full state reset.
+                Log.d(TAG, "Receive flow finished, cleaning up resources")
+                cleanupTransferResources()
             }
         }
     }
 
     private suspend fun isFriend(ssid: String): Boolean = friendDao.getBySsid(ssid) != null
-
-    private fun saveFriendIfNeeded(ssid: String?) {
-        if (ssid.isNullOrBlank()) return
-        val resolvedName = currentConnectionDisplayName
-            ?: Regex("^DIRECT-[a-zA-Z0-9]{2}-(.+)$").find(ssid)?.groupValues?.get(1)
-            ?: ssid
-        viewModelScope.launch {
-            val existing = friendDao.getBySsid(ssid)
-            if (existing != null) {
-                friendDao.updateLastSeen(ssid, System.currentTimeMillis())
-                // Update display name if sender changed it
-                if (existing.displayName != resolvedName) {
-                    friendDao.updateDisplayName(ssid, resolvedName)
-                }
-            } else {
-                friendDao.insert(
-                    FriendEntity(
-                        ssid = ssid,
-                        displayName = resolvedName,
-                        firstSeenTimestamp = System.currentTimeMillis(),
-                        lastSeenTimestamp = System.currentTimeMillis()
-                    )
-                )
-            }
-        }
-    }
 
     // ─── Friend exchange ──────────────────────────────────────────────────────
 
@@ -682,8 +683,9 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
                 }
             }
 
-            // Save/update friend in Room
-            friendDao.insertOrUpdate(
+            // Save/update friend in Room — upsertByIdentity handles SSID changes
+            // across Wi-Fi Direct sessions for the same person.
+            friendDao.upsertByIdentity(
                 FriendEntity(
                     ssid = ssid,
                     displayName = profile.displayName,
@@ -762,22 +764,34 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
             val groupReady = withTimeoutOrNull(10_000L) {
                 wifiDirectManager.state.first { it is WifiDirectState.GroupCreated }
             }
-            if (groupReady == null) {
+            if (groupReady == null || groupReady !is WifiDirectState.GroupCreated) {
                 appendLog("❌ Wi-Fi Direct group creation timed out.", isError = true)
                 _uiState.update { it.copy(isProfileShareMode = false) }
                 return@launch
             }
-            Log.d(TAG, "Group ready, starting profile TCP server")
+            // Explicitly set HCE connection details — don't rely on async observeWifiDirectState
+            // which may not have processed GroupCreated yet when the NFC tap fires.
+            BoopHceService.connectionMac = groupReady.deviceMac
+            BoopHceService.connectionPort = BoopHceService.DEFAULT_PORT
+            BoopHceService.connectionSsid = groupReady.ssid
+            BoopHceService.connectionToken = groupReady.passphrase
+            Log.d(TAG, "Group ready (SSID=${groupReady.ssid}), HCE details set, starting profile TCP server")
             // 4. Now start TCP server — group is ready, NFC is broadcasting
-            TransferManager.sendProfile(profileData, BoopHceService.DEFAULT_PORT)
-                .collect { progress ->
-                    if (progress.error != null) {
-                        _uiState.update { it.copy(error = progress.error, isProfileShareMode = false) }
-                    } else if (progress.isComplete) {
-                        appendLog("✅ Profile shared successfully!")
-                        _uiState.update { it.copy(isProfileShareMode = false, transferComplete = true) }
+            try {
+                TransferManager.sendProfile(profileData, BoopHceService.DEFAULT_PORT)
+                    .collect { progress ->
+                        if (progress.error != null) {
+                            _uiState.update { it.copy(error = progress.error, isProfileShareMode = false) }
+                        } else if (progress.isComplete) {
+                            appendLog("✅ Profile shared successfully!")
+                            _uiState.update { it.copy(isProfileShareMode = false, transferComplete = true) }
+                        }
                     }
-                }
+            } finally {
+                Log.d(TAG, "Profile share flow finished, cleaning up resources")
+                cleanupTransferResources()
+                _uiState.update { it.copy(isProfileShareMode = false, isReceiveMode = true, isNfcReading = true, isSendMode = false) }
+            }
         }
     }
 
@@ -793,35 +807,40 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
         val context = getApplication<Application>()
         transferJob?.cancel()
         transferJob = viewModelScope.launch {
-            val queued = wifiDirectManager.connect(details.ssid, details.token, details.mac)
-            if (!queued) {
-                _uiState.update { it.copy(error = "Wi-Fi Direct connection rejected.") }
-                return@launch
-            }
-
-            val result = withTimeoutOrNull(CONNECTION_TIMEOUT_MS) {
-                wifiDirectManager.state.first { state ->
-                    state is WifiDirectState.Connected || state is WifiDirectState.Error
-                }
-            }
-
-            when {
-                result == null -> {
-                    wifiDirectManager.disconnect()
-                    _uiState.update { it.copy(error = "Connection timed out.") }
+            try {
+                val queued = wifiDirectManager.connect(details.ssid, details.token, details.mac)
+                if (!queued) {
+                    _uiState.update { it.copy(error = "Wi-Fi Direct connection rejected.") }
                     return@launch
                 }
-                result is WifiDirectState.Error -> return@launch
-            }
 
-            TransferManager.receiveProfile(GROUP_OWNER_IP, details.port)
-                .collect { progress ->
-                    if (progress.error != null) {
-                        _uiState.update { it.copy(error = progress.error) }
-                    } else if (progress.friendProfile != null) {
-                        _uiState.update { it.copy(receivedProfile = progress.friendProfile) }
+                val result = withTimeoutOrNull(CONNECTION_TIMEOUT_MS) {
+                    wifiDirectManager.state.first { state ->
+                        state is WifiDirectState.Connected || state is WifiDirectState.Error
                     }
                 }
+
+                when {
+                    result == null -> {
+                        _uiState.update { it.copy(error = "Connection timed out.") }
+                        return@launch
+                    }
+                    result is WifiDirectState.Error -> return@launch
+                }
+
+                TransferManager.receiveProfile(GROUP_OWNER_IP, details.port)
+                    .collect { progress ->
+                        if (progress.error != null) {
+                            _uiState.update { it.copy(error = progress.error) }
+                        } else if (progress.friendProfile != null) {
+                            _uiState.update { it.copy(receivedProfile = progress.friendProfile) }
+                        }
+                    }
+            } finally {
+                Log.d(TAG, "Profile receive flow finished, cleaning up resources")
+                cleanupTransferResources()
+                _uiState.update { it.copy(isReceiveMode = true, isNfcReading = true) }
+            }
         }
     }
 
@@ -840,15 +859,13 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
     // ─── Friend selection ─────────────────────────────────────────────────
 
     fun selectFriend(id: Long) {
-        viewModelScope.launch {
-            _selectedFriend.value = friendDao.getById(id)
-        }
+        _selectedFriendId.value = id
     }
 
     fun removeFriend(id: Long) {
         viewModelScope.launch {
             friendDao.deleteById(id)
-            _selectedFriend.value = null
+            _selectedFriendId.value = null
         }
     }
 
@@ -945,9 +962,10 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
         _uiState.update { it.copy(receivedPayload = null) }
     }
 
-    /** Dismisses the error dialog by clearing [TransferUiState.error]. */
+    /** Dismisses the error dialog and fully resets to receive mode. */
     fun dismissError() {
         _uiState.update { it.copy(error = null) }
+        resetToReceive()
     }
 
     /**
@@ -994,6 +1012,21 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    /**
+     * Lightweight cleanup: closes sockets + tears down Wi-Fi Direct group.
+     * Does NOT wipe UI state — call this from `finally` blocks so the UI
+     * can still show the completion/error state while BoopScaffold navigates.
+     */
+    private suspend fun cleanupTransferResources() {
+        Log.d(TAG, "cleanupTransferResources()")
+        TransferManager.cleanup()
+        pendingBefriend = false
+        friendDecisionDeferred?.complete(false)
+        friendDecisionDeferred = null
+        BoopHceService.connectionType = "file"
+        wifiDirectManager.reset()
+    }
+
     /** Resets state and re-arms receive mode so the next NFC tap works immediately. */
     fun resetToReceive() {
         transferJob?.cancel()
@@ -1011,6 +1044,8 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
         )
         viewModelScope.launch {
             wifiDirectManager.reset()
+            // Brief delay to let Wi-Fi Direct framework fully tear down
+            delay(200)
             _uiState.update { it.copy(isResetting = false, isReceiveMode = true, isNfcReading = true) }
             Log.d(TAG, "State reset to Receive mode")
         }

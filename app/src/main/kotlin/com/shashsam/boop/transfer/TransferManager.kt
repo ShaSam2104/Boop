@@ -685,12 +685,17 @@ object TransferManager {
 
                 val dataOut = DataOutputStream(clientSocket.getOutputStream().buffered(CHUNK_SIZE))
                 sendFriendRequest(dataOut, profileData)
+                // Ensure all buffered data reaches the receiver's TCP stack before closing.
+                // Without this, close() may discard in-flight data on some devices.
+                clientSocket.getOutputStream().flush()
                 send(TransferProgress(isComplete = true, friendProfile = profileData))
 
             } catch (e: Exception) {
                 Log.e(TAG, "sendProfile error", e)
                 send(TransferProgress(error = e.message ?: "Profile send failed"))
             } finally {
+                // Graceful shutdown: signal EOF to receiver before closing
+                runCatching { clientSocket?.shutdownOutput() }
                 runCatching { clientSocket?.close() }
                 runCatching { serverSocket?.close() }
                 activeServerSocket = null

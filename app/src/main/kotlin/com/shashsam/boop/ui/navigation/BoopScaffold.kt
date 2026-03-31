@@ -133,18 +133,15 @@ fun BoopScaffold(
         }
     }
 
-    // Auto-navigate back when transfer completes
+    // Auto-navigate back when transfer completes, then fully reset state
     LaunchedEffect(transferUiState.transferComplete) {
         if (transferUiState.transferComplete && currentRoute == BoopRoute.TransferProgress.route) {
-            Log.d(TAG, "Transfer complete — navigating back after delay")
+            Log.d(TAG, "Transfer complete — navigating back after delay, then resetting")
             kotlinx.coroutines.delay(1000)
             navController.popBackStack(BoopRoute.Home.route, inclusive = false)
-            // Don't reset yet — the transfer job handles friend exchange
-            // and will auto-reset when the full flow completes.
-            // Only reset for simple receiver flows (no friend exchange).
-            if (!transferUiState.isSendMode && transferUiState.pendingFriendRequest == null) {
-                onResetToReceive()
-            }
+            // Reset state AFTER navigation so the TransferProgress screen doesn't
+            // flash "Unknown File" from a wiped state.
+            onResetToReceive()
         }
     }
 
@@ -322,8 +319,15 @@ fun BoopScaffold(
 
     // ── Error Dialog ────────────────────────────────────────────────────
     transferUiState.error?.let { errorMessage ->
+        val dismissAndNavigate = {
+            // Navigate back to Home if we're on TransferProgress, then dismiss error
+            if (currentRoute == BoopRoute.TransferProgress.route) {
+                navController.popBackStack(BoopRoute.Home.route, inclusive = false)
+            }
+            onDismissError()
+        }
         AlertDialog(
-            onDismissRequest = onDismissError,
+            onDismissRequest = dismissAndNavigate,
             shape = BoopShapeMedium,
             containerColor = MaterialTheme.colorScheme.surface,
             icon = {
@@ -348,7 +352,7 @@ fun BoopScaffold(
                 )
             },
             confirmButton = {
-                TextButton(onClick = onDismissError) {
+                TextButton(onClick = dismissAndNavigate) {
                     Text("Dismiss", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
                 }
             }
