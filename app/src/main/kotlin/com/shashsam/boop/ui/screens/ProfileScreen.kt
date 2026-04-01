@@ -349,7 +349,8 @@ fun ProfileScreen(
                     isEditable = true,
                     onItemClick = {},
                     onEditItem = { editingItem = it },
-                    onDeleteItem = onDeleteItem
+                    onDeleteItem = onDeleteItem,
+                    onReorderItems = onReorderItems
                 )
                 Spacer(modifier = Modifier.height(20.dp))
             }
@@ -463,7 +464,9 @@ fun ProfileScreen(
 
     // ── Add profile item dialog ──────────────────────────────────────────
     if (showAddDialog) {
+        val slotsUsed = profileItems.fold(0) { acc, it -> acc + if (it.size == "full") 2 else 1 }
         ProfileItemDialog(
+            allowFull = (12 - slotsUsed) >= 2,
             onSave = { type, label, value, size ->
                 onAddItem(type, label, value, size)
                 showAddDialog = false
@@ -474,8 +477,11 @@ fun ProfileScreen(
 
     // ── Edit profile item dialog ─────────────────────────────────────────
     editingItem?.let { item ->
+        val slotsUsed = profileItems.fold(0) { acc, it -> acc + if (it.size == "full") 2 else 1 }
+        val currentItemSlots = if (item.size == "full") 2 else 1
         ProfileItemDialog(
             existingItem = item,
+            allowFull = (12 - slotsUsed + currentItemSlots) >= 2,
             onSave = { type, label, value, size ->
                 onEditItem(item.copy(type = type, label = label, value = value, size = size))
                 editingItem = null
