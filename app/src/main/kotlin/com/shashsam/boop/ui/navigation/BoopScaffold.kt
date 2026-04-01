@@ -113,7 +113,7 @@ fun BoopScaffold(
     onShareProfileClick: () -> Unit,
     onCancelProfileShare: () -> Unit,
     onReshowWarnings: () -> Unit,
-    onProfileAnswerChange: (String, String) -> Unit = { _, _ -> },
+    onBioChange: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     CompositionLocalProvider(LocalHapticsEnabled provides settingsState.vibrationEnabled) {
@@ -127,6 +127,7 @@ fun BoopScaffold(
         || currentRoute == BoopRoute.TransferProgress.route
         || currentRoute == BoopRoute.Settings.route
         || currentRoute == BoopRoute.FriendProfile.route
+        || currentRoute == BoopRoute.FriendsList.route
         || currentRoute?.startsWith("friend_history") == true
 
     // ── Auto-navigation: transfer progress ───────────────────────────────
@@ -224,7 +225,7 @@ fun BoopScaffold(
             onShareProfileClick = onShareProfileClick,
             onCancelProfileShare = onCancelProfileShare,
             onReshowWarnings = onReshowWarnings,
-            onProfileAnswerChange = onProfileAnswerChange,
+            onBioChange = onBioChange,
             modifier = Modifier.padding(innerPadding)
         )
     }

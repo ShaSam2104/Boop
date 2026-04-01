@@ -17,6 +17,7 @@ import androidx.navigation.navArgument
 import com.shashsam.boop.data.FriendEntity
 import com.shashsam.boop.data.ProfileItemEntity
 import com.shashsam.boop.ui.screens.FriendProfileScreen
+import com.shashsam.boop.ui.screens.FriendsListScreen
 import com.shashsam.boop.ui.screens.HistoryScreen
 import com.shashsam.boop.ui.screens.HomeScreen
 import com.shashsam.boop.ui.screens.NfcGuideScreen
@@ -68,7 +69,7 @@ fun BoopNavHost(
     onShareProfileClick: () -> Unit,
     onCancelProfileShare: () -> Unit,
     onReshowWarnings: () -> Unit,
-    onProfileAnswerChange: (String, String) -> Unit = { _, _ -> },
+    onBioChange: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     NavHost(
@@ -171,8 +172,14 @@ fun BoopNavHost(
                 friends = friends,
                 profileItems = profileItems,
                 profilePicPath = profilePicPath,
-                profileAnswers = settingsState.profileAnswers,
-                onProfileAnswerChange = onProfileAnswerChange,
+                onBioChange = onBioChange,
+                onFriendsListClick = {
+                    Log.d(TAG, "Navigating to FriendsList from Profile")
+                    navController.navigate(BoopRoute.FriendsList.route) {
+                        popUpTo(BoopRoute.Home.route) { inclusive = false }
+                        launchSingleTop = true
+                    }
+                },
                 onSettingsClick = {
                     Log.d(TAG, "Navigating to Settings from Profile")
                     navController.navigate(BoopRoute.Settings.route) {
@@ -227,6 +234,36 @@ fun BoopNavHost(
                 onExportData = onExportData,
                 onImportData = onImportData,
                 onDismissBackupMessage = onDismissBackupMessage
+            )
+        }
+
+        composable(BoopRoute.FriendsList.route) {
+            BackHandler {
+                Log.d(TAG, "System back on FriendsList -> Profile tab")
+                navController.navigate(BoopRoute.Profile.route) {
+                    popUpTo(navController.graph.findStartDestination().id) {
+                        saveState = true
+                    }
+                    launchSingleTop = true
+                    restoreState = true
+                }
+            }
+            FriendsListScreen(
+                friends = friends,
+                onBackClick = {
+                    Log.d(TAG, "FriendsList back -> Profile tab")
+                    navController.navigate(BoopRoute.Profile.route) {
+                        popUpTo(navController.graph.findStartDestination().id) {
+                            saveState = true
+                        }
+                        launchSingleTop = true
+                        restoreState = true
+                    }
+                },
+                onFriendClick = { friend ->
+                    onFriendClick(friend)
+                    navController.navigate(BoopRoute.FriendProfile.createRoute(friend.id))
+                }
             )
         }
 
