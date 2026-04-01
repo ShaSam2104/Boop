@@ -60,7 +60,7 @@ Sender Device                          Receiver Device
 - **Profile & bento grid** — customizable profile with display name, profile picture, and a bento grid of links, emails, and phone numbers (up to 12 items). Share profiles via NFC tap
 - **Transfer history** — persistent history (Room database) with direction and file-type filters, tap to open, share button to re-send
 - **Encrypted backup** — export/import profile, friends, and history as a password-protected `.boop` file (AES-256-GCM with PBKDF2 key derivation)
-- **Dark/light theme** — neo-brutalist design system with brand purple (#736DEE) and accent yellow (#F8FFA3). Plus Jakarta Sans typography
+- **Dark/light theme** — neo-brutalist design system. Dark: black + yellow accent. Light: purple-dominant + white accent. Aurora blob CTA stays yellow in both. Plus Jakarta Sans typography
 - **NFC antenna guide** — Canvas visualization of the phone's NFC sweet spot using `getNfcAntennaInfo()` (API 34+) with fallback
 - **Scoped storage** — all file I/O through MediaStore API; received files saved to Downloads
 
@@ -156,6 +156,63 @@ app/src/main/
         ├── apduservice.xml            # HCE AID filter
         └── nfc_tech_filter.xml        # IsoDep tech filter
 ```
+
+---
+
+## Color System
+
+Boop uses a dual-theme "Solid Geometric" design system. Dark mode is black with yellow accents; light mode is purple-dominant with white accents. No dynamic color — brand palette is always used.
+
+### M3 Color Scheme
+
+| Role | Dark | Light | Usage |
+|---|---|---|---|
+| `primary` | `#736DEE` Purple | `#FFFFFF` White | NeoBrutalistButton bg |
+| `onPrimary` | `#FFFFFF` | `#4B45B8` PurpleDark | Button text |
+| `primaryContainer` | `#4B45B8` | `#EEEEFF` | — |
+| `secondary` | `#9B97F5` PurpleLight | `#F8FFA3` Yellow | — |
+| `background` | `#000000` Black | `#736DEE` Purple | Screen bg, status bar |
+| `onBackground` | `#FFFFFF` | `#FFFFFF` | Headings, primary text |
+| `surface` | `#111111` | `#6862E0` | — |
+| `onSurface` | `#FFFFFF` | `#FFFFFF` | — |
+| `surfaceVariant` | `#1A1A1A` | `#5D57D0` | Disabled button bg |
+| `onSurfaceVariant` | `#B0B0B0` | `#D0CDFF` | Cancel text, dialog body |
+| `outline` | `#777777` | `#ADA9E0` | Disabled borders |
+| `error` | `#CF6679` | `#CF6679` | Remove friend, error dialogs |
+
+### Extended Tokens (`LocalBoopTokens`)
+
+| Token | Dark | Light | Usage |
+|---|---|---|---|
+| `accent` | `#F8FFA3` Yellow | `#FFFFFF` White | Icons, "View All", add button, BentoGrid icons |
+| `glowColor` | `#F8FFA3` 15% | `#FFFFFF` 15% | `boopGlow` modifier |
+| `glassBg` | `#FFFFFF` 12% | `#FFFFFF` 15% | GlassCard background |
+| `glassBorder` | `#FFFFFF` 20% | `#FFFFFF` 20% | GlassCard border, dividers |
+| `cardBackground` | `#1E1E1E` | `#FFFFFF` 10% | — |
+| `textSecondary` | `#B0B0B0` | `#FFFFFF` 80% | Subtitles, stats, bio |
+| `textTertiary` | `#777777` | `#FFFFFF` 50% | Placeholder text, chevrons |
+| `pillContainer` | `#1A1A1A` | `#5D57D0` | Mode pill bg |
+| `pillActive` | `#2A2A2A` | `#8A85F5` | Active pill segment |
+| `concentricDashed` | `#333333` | `#9590F0` | HomeScreen dashed ring |
+| `concentricOuter` | `#222222` | `#6560D8` | HomeScreen outer circle |
+| `concentricInner` | `#1A1A1A` | `#5D57D0` | HomeScreen inner circle |
+| `navBarContainer` | `#000000` | `#5D57D0` | Bottom nav bg |
+| `navIndicator` | `#2A2A2A` | `#5550C0` | Bottom nav active indicator |
+| `dialogSurface` | `#111111` | `#1A1A2E` Deep navy | AlertDialog bg |
+
+### Standalone Colors
+
+| Color | Hex | Usage |
+|---|---|---|
+| `BoopBrandPurple` | `#736DEE` | Dialog icons, text field focus, ProfileItemDialog selected state |
+| `BoopAccentYellow` | `#F8FFA3` | HomeScreen aurora blob CTA (hardcoded, not theme-dependent) |
+| `WarningAmber` | `#FFB74D` | HomeScreen warning icon |
+| `SocialInstagram` | `#E1306C` | Social icon brand color |
+| `SocialLinkedIn` | `#0A66C2` | Social icon brand color |
+| `SocialYouTube` | `#FF0000` | Social icon brand color |
+| `SocialFacebook` | `#1877F2` | Social icon brand color |
+
+> **Note:** The "Boop it" aurora blob always uses `BoopAccentYellow` directly — it stays yellow in both themes. The `tokens.accent` (white in light mode) applies to UI chrome: icons, labels, and interactive elements.
 
 ---
 
