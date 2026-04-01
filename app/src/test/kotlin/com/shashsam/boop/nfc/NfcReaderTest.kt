@@ -148,6 +148,22 @@ class NfcReaderTest {
         assertEquals("file", result!!.type)
     }
 
+    @Test
+    fun `parsePayloadJson extracts ulid field`() {
+        val json = """{"mac":"AA:BB:CC:DD:EE:FF","port":8765,"ulid":"01HXYZ1234567890ABCDEF"}"""
+        val result = NfcReader.parsePayloadJson(json)
+        assertNotNull(result)
+        assertEquals("01HXYZ1234567890ABCDEF", result!!.ulid)
+    }
+
+    @Test
+    fun `parsePayloadJson defaults ulid to empty when absent`() {
+        val json = """{"mac":"AA:BB:CC:DD:EE:FF","port":8765}"""
+        val result = NfcReader.parsePayloadJson(json)
+        assertNotNull(result)
+        assertEquals("", result!!.ulid)
+    }
+
     // ─── SELECT AID APDU builder test ─────────────────────────────────────────
 
     @Test

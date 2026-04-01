@@ -488,20 +488,27 @@ class WifiDirectManager(private val context: Context) {
         val mgr = manager
         val ch = channel
         if (mgr != null && ch != null) {
-            suspendCancellableCoroutine { cont ->
-                mgr.cancelConnect(ch, object : WifiP2pManager.ActionListener {
-                    override fun onSuccess() {
-                        Log.d(TAG, "reset cancelConnect succeeded")
-                        if (cont.isActive) cont.resume(Unit)
+            // Run cancelConnect and removeGroup in parallel for faster cleanup
+            coroutineScope {
+                launch {
+                    suspendCancellableCoroutine { cont ->
+                        mgr.cancelConnect(ch, object : WifiP2pManager.ActionListener {
+                            override fun onSuccess() {
+                                Log.d(TAG, "reset cancelConnect succeeded")
+                                if (cont.isActive) cont.resume(Unit)
+                            }
+                            override fun onFailure(reason: Int) {
+                                Log.d(TAG, "reset cancelConnect failed: ${reason.toReasonString()} (no pending — OK)")
+                                if (cont.isActive) cont.resume(Unit)
+                            }
+                        })
                     }
-                    override fun onFailure(reason: Int) {
-                        Log.d(TAG, "reset cancelConnect failed: ${reason.toReasonString()} (no pending — OK)")
-                        if (cont.isActive) cont.resume(Unit)
-                    }
-                })
+                }
+                launch {
+                    removeGroup()
+                }
             }
         }
-        removeGroup()
         _state.value = WifiDirectState.Idle
     }
 

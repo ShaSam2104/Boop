@@ -273,6 +273,7 @@ class MainActivity : ComponentActivity() {
                         onShareProfileClick = {
                             Log.d(TAG, "onShareProfileClick")
                             val profileData = com.shashsam.boop.transfer.ProfileData(
+                                ulid = com.shashsam.boop.utils.getOrCreateUlid(this@MainActivity),
                                 displayName = settingsState.displayName,
                                 profileItemsJson = profileViewModel.buildProfileJson(),
                                 profilePicBytes = profileViewModel.getProfilePicFile()?.readBytes()

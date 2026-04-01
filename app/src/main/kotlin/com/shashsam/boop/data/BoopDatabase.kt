@@ -9,7 +9,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [TransferHistoryEntity::class, FriendEntity::class, ProfileItemEntity::class],
-    version = 3,
+    version = 4,
     exportSchema = false
 )
 abstract class BoopDatabase : RoomDatabase() {
@@ -66,13 +66,31 @@ abstract class BoopDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // 1. Add ulid and lastInteractionTimestamp columns
+                db.execSQL("ALTER TABLE friends ADD COLUMN ulid TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE friends ADD COLUMN lastInteractionTimestamp INTEGER NOT NULL DEFAULT 0")
+
+                // 2. Backfill: set lastInteractionTimestamp = lastSeenTimestamp
+                db.execSQL("UPDATE friends SET lastInteractionTimestamp = lastSeenTimestamp")
+
+                // 3. Generate unique placeholder ULIDs for existing friends (id-based to ensure uniqueness)
+                // Real ULIDs will be assigned on next friend exchange
+                db.execSQL("UPDATE friends SET ulid = 'LEGACY_' || id")
+
+                // 4. Create unique index on ulid
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_friends_ulid ON friends (ulid)")
+            }
+        }
+
         fun getInstance(context: Context): BoopDatabase =
             INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(
                     context.applicationContext,
                     BoopDatabase::class.java,
                     "boop_database"
-                ).addMigrations(MIGRATION_1_2, MIGRATION_2_3).build().also { INSTANCE = it }
+                ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4).build().also { INSTANCE = it }
             }
     }
 }

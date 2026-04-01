@@ -126,7 +126,7 @@ class TransferUiStateTest {
 
     @Test
     fun `pendingFriendRequest can be set`() {
-        val profile = ProfileData("Test", "[]", null)
+        val profile = ProfileData("01HABCTEST00000000TEST", "Test", "[]", null)
         val state = TransferUiState().copy(pendingFriendRequest = profile)
         assertEquals("Test", state.pendingFriendRequest?.displayName)
     }
@@ -143,7 +143,7 @@ class TransferUiStateTest {
     fun `receivedProfile defaults to null`() {
         val state = TransferUiState()
         assertNull(state.receivedProfile)
-        val profile = ProfileData("Received", "[]", null)
+        val profile = ProfileData("01HABCRECV00000000RECV", "Received", "[]", null)
         val withProfile = state.copy(receivedProfile = profile)
         assertEquals("Received", withProfile.receivedProfile?.displayName)
     }

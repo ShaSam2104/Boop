@@ -7,6 +7,7 @@ import java.io.DataOutputStream
 private const val TAG = "FriendExchange"
 
 data class ProfileData(
+    val ulid: String,
     val displayName: String,
     val profileItemsJson: String,
     val profilePicBytes: ByteArray?
@@ -14,13 +15,15 @@ data class ProfileData(
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
         if (other !is ProfileData) return false
-        return displayName == other.displayName &&
+        return ulid == other.ulid &&
+                displayName == other.displayName &&
                 profileItemsJson == other.profileItemsJson &&
                 profilePicBytes.contentEquals(other.profilePicBytes)
     }
 
     override fun hashCode(): Int {
-        var result = displayName.hashCode()
+        var result = ulid.hashCode()
+        result = 31 * result + displayName.hashCode()
         result = 31 * result + profileItemsJson.hashCode()
         result = 31 * result + (profilePicBytes?.contentHashCode() ?: 0)
         return result
@@ -32,28 +35,12 @@ const val FRIEND_ACK_MAGIC = "BOOP_FRIEND_ACK\n"
 const val FRIEND_NAK_MAGIC = "BOOP_FRIEND_NAK\n"
 
 fun sendFriendRequest(out: DataOutputStream, profile: ProfileData) {
-    Log.d(TAG, "Sending friend request: name=${profile.displayName}")
+    Log.d(TAG, "Sending friend request: name=${profile.displayName} ulid=${profile.ulid}")
     val magicBytes = FRIEND_REQUEST_MAGIC.toByteArray(Charsets.UTF_8)
     out.write(magicBytes)
-
-    // Write display name
-    val nameBytes = profile.displayName.toByteArray(Charsets.UTF_8)
-    out.writeInt(nameBytes.size)
-    out.write(nameBytes)
-
-    // Write profile items JSON
-    val jsonBytes = profile.profileItemsJson.toByteArray(Charsets.UTF_8)
-    out.writeInt(jsonBytes.size)
-    out.write(jsonBytes)
-
-    // Write profile pic
-    val picSize = profile.profilePicBytes?.size ?: 0
-    out.writeInt(picSize)
-    if (picSize > 0) {
-        out.write(profile.profilePicBytes!!)
-    }
+    writeProfileData(out, profile)
     out.flush()
-    Log.d(TAG, "Friend request sent (json=${jsonBytes.size}B pic=${picSize}B)")
+    Log.d(TAG, "Friend request sent")
 }
 
 fun readFriendRequest(inp: DataInputStream): ProfileData? {
@@ -79,22 +66,7 @@ fun sendFriendResponse(out: DataOutputStream, accepted: Boolean, profile: Profil
         Log.d(TAG, "Sending friend ACK")
         out.write(FRIEND_ACK_MAGIC.toByteArray(Charsets.UTF_8))
         if (profile != null) {
-            // Write display name
-            val nameBytes = profile.displayName.toByteArray(Charsets.UTF_8)
-            out.writeInt(nameBytes.size)
-            out.write(nameBytes)
-
-            // Write profile items JSON
-            val jsonBytes = profile.profileItemsJson.toByteArray(Charsets.UTF_8)
-            out.writeInt(jsonBytes.size)
-            out.write(jsonBytes)
-
-            // Write profile pic
-            val picSize = profile.profilePicBytes?.size ?: 0
-            out.writeInt(picSize)
-            if (picSize > 0) {
-                out.write(profile.profilePicBytes!!)
-            }
+            writeProfileData(out, profile)
         }
     } else {
         Log.d(TAG, "Sending friend NAK")
@@ -132,7 +104,35 @@ fun readFriendResponse(inp: DataInputStream): Pair<Boolean, ProfileData?> {
     }
 }
 
+private fun writeProfileData(out: DataOutputStream, profile: ProfileData) {
+    // Write ULID
+    val ulidBytes = profile.ulid.toByteArray(Charsets.UTF_8)
+    out.writeInt(ulidBytes.size)
+    out.write(ulidBytes)
+
+    // Write display name
+    val nameBytes = profile.displayName.toByteArray(Charsets.UTF_8)
+    out.writeInt(nameBytes.size)
+    out.write(nameBytes)
+
+    // Write profile items JSON
+    val jsonBytes = profile.profileItemsJson.toByteArray(Charsets.UTF_8)
+    out.writeInt(jsonBytes.size)
+    out.write(jsonBytes)
+
+    // Write profile pic
+    val picSize = profile.profilePicBytes?.size ?: 0
+    out.writeInt(picSize)
+    if (picSize > 0) {
+        out.write(profile.profilePicBytes!!)
+    }
+}
+
 private fun readProfileData(inp: DataInputStream): ProfileData {
+    // Read ULID
+    val ulidLen = inp.readInt()
+    val ulidBytes = ByteArray(ulidLen).also { inp.readFully(it) }
+
     val nameLen = inp.readInt()
     val nameBytes = ByteArray(nameLen).also { inp.readFully(it) }
 
@@ -145,6 +145,7 @@ private fun readProfileData(inp: DataInputStream): ProfileData {
     } else null
 
     return ProfileData(
+        ulid = String(ulidBytes, Charsets.UTF_8),
         displayName = String(nameBytes, Charsets.UTF_8),
         profileItemsJson = String(jsonBytes, Charsets.UTF_8),
         profilePicBytes = picBytes

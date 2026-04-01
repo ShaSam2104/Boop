@@ -113,7 +113,7 @@ class TransferReliabilityTest {
 
     @Test
     fun `reset clears pending friend request`() {
-        val profile = ProfileData("Alice", "[]", null)
+        val profile = ProfileData("01HABCALICE000000ALICE", "Alice", "[]", null)
         val pending = TransferUiState().copy(pendingFriendRequest = profile)
         val reset = TransferUiState(recentTransfers = pending.recentTransfers, isResetting = true)
         assertNull(reset.pendingFriendRequest)
@@ -121,7 +121,7 @@ class TransferReliabilityTest {
 
     @Test
     fun `reset clears receivedProfile`() {
-        val profile = ProfileData("Bob", "{}", null)
+        val profile = ProfileData("01HABCBOBBB0000000BOBB", "Bob", "{}", null)
         val withProfile = TransferUiState().copy(receivedProfile = profile)
         val reset = TransferUiState(recentTransfers = withProfile.recentTransfers, isResetting = true)
         assertNull(reset.receivedProfile)
@@ -205,7 +205,7 @@ class TransferReliabilityTest {
 
     @Test
     fun `TransferProgress complete with friend request`() {
-        val profile = ProfileData("Charlie", "[]", null)
+        val profile = ProfileData("01HABCHARLIE00000CHARL", "Charlie", "[]", null)
         val progress = TransferProgress(isComplete = true, friendRequest = profile)
         assertTrue(progress.isComplete)
         assertEquals("Charlie", progress.friendRequest?.displayName)
@@ -299,7 +299,7 @@ class TransferReliabilityTest {
 
     @Test
     fun `ProfileData round-trips display name and JSON`() {
-        val profile = ProfileData("Alice", """[{"type":"link","value":"github.com"}]""", null)
+        val profile = ProfileData("01HABCALICE000000ALICE", "Alice", """[{"type":"link","value":"github.com"}]""", null)
         assertEquals("Alice", profile.displayName)
         assertTrue(profile.profileItemsJson.contains("github.com"))
         assertNull(profile.profilePicBytes)
@@ -308,7 +308,7 @@ class TransferReliabilityTest {
     @Test
     fun `ProfileData with pic bytes`() {
         val picBytes = byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte())
-        val profile = ProfileData("Bob", "[]", picBytes)
+        val profile = ProfileData("01HABCBOBBB0000000BOBB", "Bob", "[]", picBytes)
         assertEquals(3, profile.profilePicBytes?.size)
     }
 
@@ -330,5 +330,23 @@ class TransferReliabilityTest {
     fun `ConnectionDetails fileCount defaults to 1`() {
         val details = ConnectionDetails("00:11:22", 8765, "DIRECT-ab-Test", "pass")
         assertEquals(1, details.fileCount)
+    }
+
+    @Test
+    fun `ConnectionDetails ulid defaults to empty`() {
+        val details = ConnectionDetails("00:11:22", 8765, "DIRECT-ab-Test", "pass")
+        assertEquals("", details.ulid)
+    }
+
+    @Test
+    fun `ConnectionDetails carries ulid`() {
+        val details = ConnectionDetails("00:11:22", 8765, "DIRECT-ab-Test", "pass", ulid = "01HABCTEST00000000TEST")
+        assertEquals("01HABCTEST00000000TEST", details.ulid)
+    }
+
+    @Test
+    fun `ProfileData carries ulid`() {
+        val profile = ProfileData("01HABCALICE000000ALICE", "Alice", "[]", null)
+        assertEquals("01HABCALICE000000ALICE", profile.ulid)
     }
 }

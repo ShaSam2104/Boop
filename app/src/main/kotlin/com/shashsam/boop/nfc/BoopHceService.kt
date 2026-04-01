@@ -134,6 +134,12 @@ class BoopHceService : HostApduService() {
          * Connection type: "file" for file transfers, "profile" for NFC profile sharing.
          */
         @Volatile var connectionType: String = "file"
+
+        /**
+         * Sender's ULID (persistent unique identity).
+         * Set from SharedPreferences before HCE broadcasts.
+         */
+        @Volatile var connectionUlid: String = ""
     }
 
     /** Which application AID was selected. */
@@ -315,6 +321,9 @@ class BoopHceService : HostApduService() {
                 put("displayName", connectionDisplayName)
             }
             put("type", connectionType)
+            if (connectionUlid.isNotBlank()) {
+                put("ulid", connectionUlid)
+            }
         }
         val json = jsonObj.toString()
         Log.d(TAG, "NDEF JSON payload: $json")

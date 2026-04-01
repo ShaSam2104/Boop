@@ -52,7 +52,7 @@ Routes are defined in `BoopRoute` sealed class: Home, History, Profile, Transfer
 
 ### Transfer Flow
 
-1. **Sender** taps "Boop it" → multi-file picker opens → files picked → `prepareSend()` creates Wi-Fi Direct group → `BoopHceService` (HCE) emits NDEF with MAC, TCP port, SSID, token, and `fileCount` as JSON. Also triggered via Android share sheet (`ACTION_SEND` / `ACTION_SEND_MULTIPLE`). No explicit mode toggle — cancelling picker stays in receive mode
+1. **Sender** taps "Boop it" → multi-file picker opens → files picked → `prepareSend()` creates Wi-Fi Direct group → `BoopHceService` (HCE) emits NDEF with MAC, TCP port, SSID, token, `fileCount`, and sender's `ulid` as JSON. Also triggered via Android share sheet (`ACTION_SEND` / `ACTION_SEND_MULTIPLE`). No explicit mode toggle — cancelling picker stays in receive mode
 2. **Receiver** reads NDEF via `NfcReader` (reader mode or foreground dispatch) → extracts `ConnectionDetails` → checks `type` field: "profile" triggers profile receive, "file" checks receive permission: "friends" auto-accepts known SSIDs, "no_one" shows 3-button BottomSheet (Reject / Accept / Accept + Become Friends) → on accept, proceeds with Wi-Fi Direct connection
 3. Wi-Fi Direct group join: Sender = Group Owner (GO IP: `192.168.49.1`), Receiver joins via SSID + passphrase using `WifiP2pConfig.Builder` (API 29+)
 4. TCP socket stream: Sender runs `ServerSocket`, Receiver connects and writes to MediaStore
@@ -80,12 +80,12 @@ Routes are defined in `BoopRoute` sealed class: Home, History, Profile, Transfer
 | `nfc/NfcReader` | NFC reader mode + foreground dispatch; parses NDEF → `ConnectionDetails` |
 | `wifi/WifiDirectManager` | Coroutine-friendly wrapper around `WifiP2pManager`; exposes `StateFlow<WifiDirectState>` |
 | `transfer/TransferManager` | Singleton with `sendFile()` / `receiveFile()` + `sendFiles()` / `receiveFiles()` (multi-file) + `sendFilesWithFriendExchange()` / `receiveFilesWithFriendExchange()` (friend exchange after file transfer) + `sendProfile()` / `receiveProfile()` (NFC profile sharing); returns `Flow<TransferProgress>` (includes `fileName`, `mimeType`, `fileIndex`, `totalFiles`, `friendRequest`, `friendProfile` on completion). Receiver-side TCP uses `connectWithRetry()` (5 attempts, 500ms apart) for reliability |
-| `transfer/FriendExchange` | Wire format helpers for bidirectional friend/profile exchange: `ProfileData` (displayName + profileItemsJson + profilePicBytes), magic-delimited request/response protocol (BOOP_FRIEND/BOOP_FRIEND_ACK/BOOP_FRIEND_NAK) |
+| `transfer/FriendExchange` | Wire format helpers for bidirectional friend/profile exchange: `ProfileData` (ulid + displayName + profileItemsJson + profilePicBytes), magic-delimited request/response protocol (BOOP_FRIEND/BOOP_FRIEND_ACK/BOOP_FRIEND_NAK) |
 | `data/BoopDatabase` | Room database singleton (`boop_database`), holds `TransferHistoryEntity` |
 | `data/TransferHistoryDao` | Room DAO: `insert()`, `getAll()` (as Flow), `deleteOlderThan()` |
 | `data/TransferHistoryEntity` | Room entity for persisted transfer history records |
-| `data/FriendEntity` | Room entity for friends list — SSID (unique indexed), displayName, timestamps, transferCount, profileJson, profilePicPath |
-| `data/FriendDao` | Room DAO for friends: insert (IGNORE on conflict), getBySsid, getById, updateLastSeen, updateProfile, deleteById, insertOrUpdate (upsert helper) |
+| `data/FriendEntity` | Room entity for friends list — ULID (unique indexed, persistent identity), SSID (unique indexed, current session), displayName, timestamps (firstSeen, lastSeen, lastInteraction), transferCount, profileJson, profilePicPath |
+| `data/FriendDao` | Room DAO for friends: insert (IGNORE on conflict), getByUlid, getBySsid, getById, updateLastSeen, updateProfile, deleteById, upsertByUlid (primary dedup by ULID) |
 | `data/ProfileItemEntity` | Room entity for user's profile bento items — type (link/email/phone), label, value, size (half/full), sortOrder |
 | `data/ProfileItemDao` | Room DAO for profile items: insert, update, deleteById, getAll (Flow), getAllOnce (suspend), getCount, updateSortOrder |
 | `ui/viewmodels/TransferViewModel` | Owns full transfer pipeline; produces `TransferUiState`; defaults to receive mode; `resetToReceive()` re-arms NFC after transfer with `isResetting` guard; observes Room for history; all sends use `sendFilesWithFriendExchange` (always ready for friend exchange); sender auto-resets after flow completion (friend exchange done/timed out); hotspot warning management; sender file URI persisted in history; opt-in friend add via `approveIncomingTransfer(becomeFriends)` + friend exchange protocol; approval gate with 3 options (`pendingApproval`, Accept/Accept+Befriend/Reject); profile sharing (`prepareProfileShare(profileData)` — single merged call: cleanup→createGroup→waitGroupCreated→TCP server, `proceedWithProfileReceive()`); friend request handling (`acceptFriendRequest()`, `rejectFriendRequest()`); friend selection (`selectFriend()`, `removeFriend()`); `buildLocalProfile()` reads profile items from DB directly; exposes `friends`, `selectedFriend` StateFlows |
@@ -111,6 +111,7 @@ Routes are defined in `BoopRoute` sealed class: Home, History, Profile, Transfer
 | `ui/theme/Theme` | `BoopTheme` composable, dark/light color schemes, `LocalBoopTokens` CompositionLocal |
 | `ui/models/LogEntry` | Data class for activity log entries |
 | `ui/models/RecentBoop` | Data class for recent transfer records (persisted via Room) |
+| `utils/Ulid` | ULID generator (`generateUlid()`) + persistent per-user ULID via SharedPreferences (`getOrCreateUlid(context)`) — Crockford Base32, 26 chars, lexicographically sortable by timestamp |
 | `utils/PermissionUtils` | Version-aware runtime permission helpers (API 26–34 differences) |
 | `utils/FilePicker` | Compose wrappers: `rememberFilePicker` (`OpenDocument`), `rememberMultiFilePicker` (`OpenMultipleDocuments`); resolves file metadata |
 | `utils/BoopHaptics` | Haptic feedback utility: `BoopHaptics` class (tick/click/heavy), `LocalHapticsEnabled` CompositionLocal |
@@ -164,12 +165,13 @@ Routes are defined in `BoopRoute` sealed class: Home, History, Profile, Transfer
 - **Multi-file history** — `handleMultiFileProgress()` detects per-file completion (`fileName != null && bytesTransferred == totalBytes`) and inserts a history entry for each file. For sender, uses `pendingFileUris[fileIndex]` for the correct per-file URI instead of `senderFileUri` (which only holds the first file's URI)
 - **History filter labels** — "Direction" and "File Type" labels precede their respective filter chip rows for clarity
 - **Auto-infer send/receive mode** — no explicit mode toggle. "Boop it" always opens the file picker. Picking files calls `prepareSend()` then `startSending()`/`startSendingMultiple()`. Cancelling the picker stays in default receive mode. App always listens for NFC in receive mode
-- **Friends are opt-in only** — friends are NOT auto-saved on receive. Only added when user taps "Accept + Become Friends" in the 3-button approval sheet. Friend exchange protocol runs post-transfer over the same TCP socket: receiver sends BOOP_FRIEND magic + local ProfileData, sender sees friend request prompt, responds with ACK + their ProfileData or NAK. Profile pics cached to `filesDir/friend_pics/{ssid_hash}.jpg`. **Sender always uses `sendFilesWithFriendExchange`** — this keeps the socket open to receive friend requests after file transfer. If no request comes, `EOFException` (receiver closed) or `SocketTimeoutException` (15s) end it gracefully
-- **Auto profile refresh with friends** — when auto-accepting transfers from known friends, `pendingBefriend` is set to `true` so the friend exchange protocol always runs, keeping profiles fresh (display name, bento items, profile pic). On the sender side, ALL friend requests are auto-accepted (no dialog) — the sender already chose to share with this person, so the receiver controls the decision via the 3-button approval sheet. `currentConnectionSsid` is set on the sender side from `WifiDirectState.GroupCreated.ssid` so `handleFriendProfileReceived` can save the receiver's profile
-- **Receive permission** — `SettingsViewModel.receivePermission` ("friends" or "no_one"). `TransferViewModel.onNfcPayloadReceived()` checks permission + friend status. "friends" auto-accepts known SSIDs, otherwise sets `pendingApproval` on `TransferUiState`. `BoopScaffold` shows 3-button BottomSheet (Reject / Accept / Accept + Become Friends) when `pendingApproval != null`
+- **Friends are opt-in only** — friends are NOT auto-saved on receive. Only added when user taps "Accept + Become Friends" in the 3-button approval sheet. Friend exchange protocol runs post-transfer over the same TCP socket: receiver sends BOOP_FRIEND magic + local ProfileData (includes ULID), sender sees friend request prompt, responds with ACK + their ProfileData or NAK. Profile pics cached to `filesDir/friend_pics/{ulid}.jpg`.
+- **ULID-based friend identity** — each user gets a persistent ULID (stored in SharedPreferences `user_ulid`) generated on first launch. ULID is shared in NFC payload (sender→receiver) and in friend exchange ProfileData (bidirectional). Friends are deduplicated by ULID, not SSID or display name. This means renaming or changing profile pic won't create duplicate friend entries. SSID is still stored for the current session's Wi-Fi Direct connection but is not the dedup key. `FriendDao.upsertByUlid()` handles the merge: matches by ULID first, cleans up stale SSID entries, preserves `firstSeenTimestamp` and `transferCount`. **Sender always uses `sendFilesWithFriendExchange`** — this keeps the socket open to receive friend requests after file transfer. If no request comes, `EOFException` (receiver closed) or `SocketTimeoutException` (15s) end it gracefully
+- **Auto profile refresh with friends** — when auto-accepting transfers from known friends (matched by ULID), `pendingBefriend` is set to `true` so the friend exchange protocol always runs, keeping profiles fresh (display name, bento items, profile pic). On the sender side, ALL friend requests are auto-accepted (no dialog) — the sender already chose to share with this person, so the receiver controls the decision via the 3-button approval sheet. `currentConnectionSsid` is set on the sender side from `WifiDirectState.GroupCreated.ssid` so `handleFriendProfileReceived` can save the receiver's profile
+- **Receive permission** — `SettingsViewModel.receivePermission` ("friends" or "no_one"). `TransferViewModel.onNfcPayloadReceived()` checks permission + friend status by ULID. "friends" auto-accepts known ULIDs, otherwise sets `pendingApproval` on `TransferUiState`. `BoopScaffold` shows 3-button BottomSheet (Reject / Accept / Accept + Become Friends) when `pendingApproval != null`
 - **NFC profile sharing** — "Share Profile" button on ProfileScreen calls `prepareProfileShare(profileData)` which: (1) cleans up stale sockets/groups, (2) creates Wi-Fi Direct group and waits for `GroupCreated` state (up to 10s), (3) **explicitly sets HCE connection details** (SSID, passphrase, MAC, port) from the GroupCreated state — does NOT rely on async `observeWifiDirectState` which may not have processed the event yet, (4) starts TCP server for profile data — all in a single coroutine to avoid race conditions. `sendProfile` uses `shutdownOutput()` before socket close for graceful EOF signaling. Receiver's `onNfcPayloadReceived` detects `type == "profile"` → connects via `connectWithRetry()` and receives ProfileData via TCP → shows save dialog. Does NOT create transfer history entries
 - **Profile bento grid** — max 6 items, types: link/email/phone, sizes: half (1x1 icon-only square) / full (1x2 icon+label wide). 4-column grid layout. Stored in Room `profile_items` table. Items serialized to JSON for wire transfer via `ProfileViewModel.buildProfileJson()` or `TransferViewModel.buildLocalProfile()` (reads from DB directly). Friend profiles parsed via `ProfileViewModel.parseProfileJson()`
-- **Room migration 1→2→3** — `MIGRATION_1_2` creates the `friends` table. `MIGRATION_2_3` creates `profile_items` table, deduplicates friends by SSID, adds `profileJson`/`profilePicPath` columns to friends, creates unique SSID index. Applied via `.addMigrations(MIGRATION_1_2, MIGRATION_2_3)` in `BoopDatabase.getInstance()`
+- **Room migration 1→2→3→4** — `MIGRATION_1_2` creates the `friends` table. `MIGRATION_2_3` creates `profile_items` table, deduplicates friends by SSID, adds `profileJson`/`profilePicPath` columns to friends, creates unique SSID index. `MIGRATION_3_4` adds `ulid` (NOT NULL, default empty, placeholder `LEGACY_{id}` for existing rows) and `lastInteractionTimestamp` columns, creates unique ULID index. Applied via `.addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)` in `BoopDatabase.getInstance()`
 - **UPI chai button** — "Buy me a Chai" launches `upi://pay?pa=03.shubhamshah-1@oksbi&pn=Boop&tn=Buy%20me%20a%20Chai&cu=INR` via `ACTION_VIEW` intent. Present in Home header (coffee icon) and Settings About section
 
 ## Tests
@@ -178,9 +180,9 @@ JVM unit tests live in `app/src/test/kotlin/com/shashsam/boop/`. Run with `./gra
 
 | Test File | Coverage |
 |---|---|
-| `nfc/NfcReaderTest` | JSON payload parsing, APDU builder, type field parsing, backward compat (14 tests) |
+| `nfc/NfcReaderTest` | JSON payload parsing, APDU builder, type field parsing, ULID field parsing, backward compat (16 tests) |
 | `ui/viewmodels/TransferUiStateTest` | Default receive mode, mode transitions, progress, completion, error, logs, recent transfers, isResetting, pendingFriendRequest, isProfileShareMode, receivedProfile, friendExchangeComplete (15 tests) |
-| `ui/viewmodels/TransferReliabilityTest` | Error recovery (reset after error, NFC re-arm), successive transfer cleanup (recentTransfers preserved, pending state cleared), guard states (isResetting, isSendMode, duplicate NFC), ghost screen prevention (state survives cleanup, full reset only after nav), TransferProgress edge cases (zero bytes, clamping, multi-file), profile refresh data round-trip, ConnectionDetails defaults (29 tests) |
+| `ui/viewmodels/TransferReliabilityTest` | Error recovery (reset after error, NFC re-arm), successive transfer cleanup (recentTransfers preserved, pending state cleared), guard states (isResetting, isSendMode, duplicate NFC), ghost screen prevention (state survives cleanup, full reset only after nav), TransferProgress edge cases (zero bytes, clamping, multi-file), profile refresh data round-trip, ConnectionDetails defaults, ULID on ConnectionDetails and ProfileData (32 tests) |
 | `utils/FormattedSizeTest` | B/KB/MB/GB boundaries and values (8 tests) |
 | `ui/navigation/BoopRouteTest` | Route strings, uniqueness across all 7 routes, FriendProfile route + createRoute (9 tests) |
 | `ui/viewmodels/SettingsUiStateTest` | Defaults, toggle copies, display name, dark mode, equality (7 tests) |
@@ -189,6 +191,7 @@ JVM unit tests live in `app/src/test/kotlin/com/shashsam/boop/`. Run with `./gra
 | `data/ProfileItemEntityTest` | Constructor, default id, copy, equality, sortOrder (5 tests) |
 | `transfer/FriendExchangeTest` | Wire format round-trip (with/without pic), ACK/NAK responses, magic constants, ProfileData equality (8 tests) |
 | `utils/SocialIconsTest` | Domain detection for each social platform, email/phone types, fallback, SOCIAL_DOMAINS map (12 tests) |
+| `utils/UlidTest` | ULID generation: length (26 chars), Crockford Base32 charset, uniqueness, lexicographic sort order (5 tests) |
 | `ExampleUnitTest` | Sanity check, permission list non-empty (2 tests) |
 
 **Note:** `SettingsViewModel` requires `Application` context — tested indirectly via `SettingsUiState` data class tests. `TransferViewModel` similarly requires Android framework; business logic tested via `TransferUiState` state transitions.
@@ -200,14 +203,14 @@ JVM unit tests live in `app/src/test/kotlin/com/shashsam/boop/`. Run with `./gra
 | HCE AID (Boop) | `F0426F6F7001` |
 | HCE AID (NDEF Type 4) | `D2760000850101` |
 | NDEF MIME type | `application/com.shashsam.boop` |
-| NDEF JSON fields | `mac`, `port`, `ssid`, `token`, `fileCount`, `displayName` (optional), `type` ("file" or "profile", default "file") |
+| NDEF JSON fields | `mac`, `port`, `ssid`, `token`, `fileCount`, `displayName` (optional), `type` ("file" or "profile", default "file"), `ulid` (sender's persistent ULID) |
 | Wi-Fi Direct GO IP | `192.168.49.1` |
 | TCP transfer port | `8765` |
 | TCP chunk size | `256 KB` |
 | Socket buffer size | `512 KB` |
-| Settings SharedPrefs | `boop_settings` (keys: notifications_enabled, vibration_enabled, sound_enabled, display_name, dark_mode_enabled, receive_permission) |
+| Settings SharedPrefs | `boop_settings` (keys: notifications_enabled, vibration_enabled, sound_enabled, display_name, dark_mode_enabled, receive_permission, user_ulid) |
 | UPI Payee | `03.shubhamshah-1@oksbi` |
-| Room DB version | 3 (migration 1→2 adds `friends` table, migration 2→3 adds `profile_items` table + `profileJson`/`profilePicPath` columns to friends + SSID unique index) |
+| Room DB version | 4 (migration 1→2 adds `friends` table, migration 2→3 adds `profile_items` table + `profileJson`/`profilePicPath` columns to friends + SSID unique index, migration 3→4 adds `ulid` + `lastInteractionTimestamp` columns to friends + ULID unique index) |
 | Profile pic SharedPrefs | `boop_settings` / `profile_pic_path` |
 | Friend exchange magic | `BOOP_FRIEND\n`, `BOOP_FRIEND_ACK\n`, `BOOP_FRIEND_NAK\n` |
 | Max profile items | 6 |

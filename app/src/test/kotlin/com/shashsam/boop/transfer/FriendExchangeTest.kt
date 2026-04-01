@@ -16,6 +16,7 @@ class FriendExchangeTest {
     @Test
     fun `friend request round-trip without pic`() {
         val profile = ProfileData(
+            ulid = "01HXYZ1234567890ABCDEF",
             displayName = "TestUser",
             profileItemsJson = """[{"type":"link","label":"GitHub","value":"https://github.com/test"}]""",
             profilePicBytes = null
@@ -29,7 +30,8 @@ class FriendExchangeTest {
         val result = readFriendRequest(inp)
 
         assertNotNull(result)
-        assertEquals("TestUser", result!!.displayName)
+        assertEquals("01HXYZ1234567890ABCDEF", result!!.ulid)
+        assertEquals("TestUser", result.displayName)
         assertEquals(profile.profileItemsJson, result.profileItemsJson)
         assertNull(result.profilePicBytes)
     }
@@ -38,6 +40,7 @@ class FriendExchangeTest {
     fun `friend request round-trip with pic`() {
         val picBytes = byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0x01, 0x02, 0x03)
         val profile = ProfileData(
+            ulid = "01HXYZ9876543210FEDCBA",
             displayName = "PicUser",
             profileItemsJson = "[]",
             profilePicBytes = picBytes
@@ -59,7 +62,7 @@ class FriendExchangeTest {
 
     @Test
     fun `friend ACK response round-trip`() {
-        val senderProfile = ProfileData("Sender", "[]", null)
+        val senderProfile = ProfileData("01HABCSENDER0000000000", "Sender", "[]", null)
 
         val buffer = ByteArrayOutputStream()
         val out = DataOutputStream(buffer)
@@ -103,16 +106,16 @@ class FriendExchangeTest {
 
     @Test
     fun `ProfileData equality with null pic`() {
-        val a = ProfileData("Name", "[]", null)
-        val b = ProfileData("Name", "[]", null)
+        val a = ProfileData("01HABC00000000000000EQ", "Name", "[]", null)
+        val b = ProfileData("01HABC00000000000000EQ", "Name", "[]", null)
         assertEquals(a, b)
     }
 
     @Test
     fun `ProfileData equality with pic bytes`() {
         val bytes = byteArrayOf(1, 2, 3)
-        val a = ProfileData("Name", "[]", bytes)
-        val b = ProfileData("Name", "[]", bytes.clone())
+        val a = ProfileData("01HABC00000000000BYTES", "Name", "[]", bytes)
+        val b = ProfileData("01HABC00000000000BYTES", "Name", "[]", bytes.clone())
         assertEquals(a, b)
     }
 }

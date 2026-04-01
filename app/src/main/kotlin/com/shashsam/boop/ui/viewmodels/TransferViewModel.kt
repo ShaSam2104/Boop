@@ -22,6 +22,7 @@ import com.shashsam.boop.wifi.GROUP_OWNER_IP
 import com.shashsam.boop.wifi.WifiDirectManager
 import com.shashsam.boop.wifi.WifiDirectState
 import com.shashsam.boop.transfer.ProfileData
+import com.shashsam.boop.utils.getOrCreateUlid
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -127,8 +128,11 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
 
     private val settingsPrefs = application.getSharedPreferences("boop_settings", android.content.Context.MODE_PRIVATE)
 
+    private val localUlid: String = getOrCreateUlid(application)
+
     private var currentConnectionSsid: String? = null
     private var currentConnectionDisplayName: String? = null
+    private var currentConnectionUlid: String? = null
     private var pendingBefriend: Boolean = false
     private var friendDecisionDeferred: CompletableDeferred<Boolean>? = null
 
@@ -244,6 +248,7 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
         Log.d(TAG, "prepareSend()")
         BoopHceService.connectionFileCount = 1
         BoopHceService.connectionDisplayName = settingsPrefs.getString("display_name", "") ?: ""
+        BoopHceService.connectionUlid = localUlid
         _uiState.update {
             it.copy(isSendMode = true, isReceiveMode = false, isNfcReading = false, error = null, transferComplete = false)
         }
@@ -508,9 +513,10 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
             Log.d(TAG, "onNfcPayloadReceived ignored — already in progress (connecting=${current.isWifiConnecting} connected=${current.isWifiConnected} transferring=${current.isTransferring})")
             return
         }
-        Log.d(TAG, "onNfcPayloadReceived: mac=${details.mac} port=${details.port} ssid=${details.ssid} token=${details.token} type=${details.type}")
+        Log.d(TAG, "onNfcPayloadReceived: mac=${details.mac} port=${details.port} ssid=${details.ssid} token=${details.token} type=${details.type} ulid=${details.ulid}")
         currentConnectionSsid = details.ssid
         currentConnectionDisplayName = details.displayName.takeIf { it.isNotBlank() }
+        currentConnectionUlid = details.ulid.takeIf { it.isNotBlank() }
 
         // Handle profile share type
         if (details.type == "profile") {
@@ -526,14 +532,14 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
         // Check receive permission setting
         val permission = settingsPrefs.getString("receive_permission", "friends") ?: "friends"
         viewModelScope.launch {
-            val knownFriend = permission == "friends" && isFriend(details.ssid)
+            val knownFriend = permission == "friends" && isFriend(details.ulid)
             if (knownFriend) {
-                Log.d(TAG, "Auto-accepting transfer from friend SSID=${details.ssid}, will reshare profiles")
+                Log.d(TAG, "Auto-accepting transfer from friend ULID=${details.ulid}, will reshare profiles")
                 // Always exchange profiles with friends to keep them fresh
                 pendingBefriend = true
                 proceedWithReceive(details)
             } else {
-                Log.d(TAG, "Awaiting user approval for transfer from SSID=${details.ssid}")
+                Log.d(TAG, "Awaiting user approval for transfer from ULID=${details.ulid}")
                 _uiState.update { it.copy(pendingApproval = details) }
             }
         }
@@ -640,7 +646,8 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    private suspend fun isFriend(ssid: String): Boolean = friendDao.getBySsid(ssid) != null
+    private suspend fun isFriend(ulid: String): Boolean =
+        ulid.isNotBlank() && friendDao.getByUlid(ulid) != null
 
     // ─── Friend exchange ──────────────────────────────────────────────────────
 
@@ -665,16 +672,17 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
 
     private fun handleFriendProfileReceived(profile: ProfileData) {
         val ssid = currentConnectionSsid ?: return
-        Log.d(TAG, "handleFriendProfileReceived: ${profile.displayName}")
+        val ulid = profile.ulid.takeIf { it.isNotBlank() } ?: currentConnectionUlid ?: return
+        Log.d(TAG, "handleFriendProfileReceived: ${profile.displayName} ulid=$ulid")
         viewModelScope.launch {
-            // Save profile pic if present
+            // Save profile pic keyed by ULID (stable across sessions)
             var picPath: String? = null
             if (profile.profilePicBytes != null) {
                 try {
                     val context = getApplication<Application>()
                     val picsDir = File(context.filesDir, "friend_pics")
                     picsDir.mkdirs()
-                    val picFile = File(picsDir, "${ssid.hashCode()}.jpg")
+                    val picFile = File(picsDir, "${ulid}.jpg")
                     picFile.writeBytes(profile.profilePicBytes)
                     picPath = picFile.absolutePath
                     Log.d(TAG, "Friend pic saved: $picPath")
@@ -683,14 +691,15 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
                 }
             }
 
-            // Save/update friend in Room — upsertByIdentity handles SSID changes
-            // across Wi-Fi Direct sessions for the same person.
-            friendDao.upsertByIdentity(
+            val now = System.currentTimeMillis()
+            friendDao.upsertByUlid(
                 FriendEntity(
+                    ulid = ulid,
                     ssid = ssid,
                     displayName = profile.displayName,
-                    firstSeenTimestamp = System.currentTimeMillis(),
-                    lastSeenTimestamp = System.currentTimeMillis(),
+                    firstSeenTimestamp = now,
+                    lastSeenTimestamp = now,
+                    lastInteractionTimestamp = now,
                     profileJson = profile.profileItemsJson.takeIf { it.isNotBlank() },
                     profilePicPath = picPath
                 )
@@ -725,6 +734,7 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
             array.toString()
         } else ""
         return ProfileData(
+            ulid = localUlid,
             displayName = displayName,
             profileItemsJson = profileJson,
             profilePicBytes = picBytes
@@ -740,6 +750,7 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
         BoopHceService.connectionType = "profile"
         BoopHceService.connectionFileCount = 0
         BoopHceService.connectionDisplayName = settingsPrefs.getString("display_name", "") ?: ""
+        BoopHceService.connectionUlid = localUlid
         _uiState.update {
             it.copy(
                 isProfileShareMode = true,
@@ -846,8 +857,8 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
 
     fun saveReceivedProfileAsFriend() {
         val profile = _uiState.value.receivedProfile ?: return
-        val ssid = currentConnectionSsid ?: return
-        Log.d(TAG, "saveReceivedProfileAsFriend: ${profile.displayName}")
+        if (currentConnectionSsid == null) return
+        Log.d(TAG, "saveReceivedProfileAsFriend: ${profile.displayName} ulid=${profile.ulid}")
         handleFriendProfileReceived(profile)
         _uiState.update { it.copy(receivedProfile = null) }
     }
@@ -999,6 +1010,7 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
         TransferManager.cleanup()
         currentConnectionSsid = null
         currentConnectionDisplayName = null
+        currentConnectionUlid = null
         pendingBefriend = false
         friendDecisionDeferred?.complete(false)
         friendDecisionDeferred = null
@@ -1033,6 +1045,7 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
         TransferManager.cleanup()
         currentConnectionSsid = null
         currentConnectionDisplayName = null
+        currentConnectionUlid = null
         pendingBefriend = false
         friendDecisionDeferred?.complete(false)
         friendDecisionDeferred = null

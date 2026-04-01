@@ -15,6 +15,7 @@ navigationCompose = "2.7.7"
 room = "2.6.1"
 ksp = "2.0.0-1.0.21"
 coil = "2.6.0"
+ulidCreator = "5.2.3"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -41,6 +42,7 @@ androidx-room-runtime = { group = "androidx.room", name = "room-runtime", versio
 androidx-room-ktx = { group = "androidx.room", name = "room-ktx", version.ref = "room" }
 androidx-room-compiler = { group = "androidx.room", name = "room-compiler", version.ref = "room" }
 coil-compose = { group = "io.coil-kt", name = "coil-compose", version.ref = "coil" }
+ulid-creator = { group = "com.github.f4b6a3", name = "ulid-creator", version.ref = "ulidCreator" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
