@@ -46,6 +46,11 @@ class BoopRouteTest {
     }
 
     @Test
+    fun `FriendsList route is friends_list`() {
+        assertEquals("friends_list", BoopRoute.FriendsList.route)
+    }
+
+    @Test
     fun `all routes are unique`() {
         val routes = listOf(
             BoopRoute.Home,
@@ -54,7 +59,8 @@ class BoopRouteTest {
             BoopRoute.TransferProgress,
             BoopRoute.NfcGuide,
             BoopRoute.Settings,
-            BoopRoute.FriendProfile
+            BoopRoute.FriendProfile,
+            BoopRoute.FriendsList
         ).map { it.route }
         assertEquals("All routes should be unique", routes.size, routes.toSet().size)
     }

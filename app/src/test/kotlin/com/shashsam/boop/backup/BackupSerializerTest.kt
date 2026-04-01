@@ -163,21 +163,20 @@ class BackupSerializerTest {
     }
 
     @Test
-    fun `profile answers round trip`() {
-        val answers = mapOf("prefer_contact" to "Texting", "gc_permission" to "Yes")
+    fun `bio round trip`() {
         val data = sampleData().copy(
-            profile = sampleData().profile.copy(answers = answers)
+            profile = sampleData().profile.copy(bio = "hello world")
         )
         val parsed = BackupSerializer.deserialize(BackupSerializer.serialize(data))
-        assertEquals(answers, parsed.profile.answers)
+        assertEquals("hello world", parsed.profile.bio)
     }
 
     @Test
-    fun `null answers backward compatible`() {
+    fun `empty bio backward compatible`() {
         val data = sampleData().copy(
-            profile = sampleData().profile.copy(answers = null)
+            profile = sampleData().profile.copy(bio = "")
         )
         val parsed = BackupSerializer.deserialize(BackupSerializer.serialize(data))
-        assertNull(parsed.profile.answers)
+        assertEquals("", parsed.profile.bio)
     }
 }
