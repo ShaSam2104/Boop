@@ -452,7 +452,7 @@ private fun ReceivePermissionDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         shape = BoopShapeMedium,
-        containerColor = MaterialTheme.colorScheme.surface,
+        containerColor = LocalBoopTokens.current.dialogSurface,
         icon = {
             Icon(
                 imageVector = Icons.Filled.Shield,

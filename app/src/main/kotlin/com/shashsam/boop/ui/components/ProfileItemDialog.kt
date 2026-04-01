@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import com.shashsam.boop.data.ProfileItemEntity
 import com.shashsam.boop.ui.theme.BoopBrandPurple
 import com.shashsam.boop.ui.theme.BoopShapeMedium
+import com.shashsam.boop.ui.theme.LocalBoopTokens
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -49,7 +50,7 @@ fun ProfileItemDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         shape = BoopShapeMedium,
-        containerColor = MaterialTheme.colorScheme.surface,
+        containerColor = LocalBoopTokens.current.dialogSurface,
         title = {
             Text(
                 text = if (isEdit) "Edit Item" else "Add Item",

@@ -121,6 +121,7 @@ fun BoopScaffold(
         || currentRoute == BoopRoute.TransferProgress.route
         || currentRoute == BoopRoute.Settings.route
         || currentRoute == BoopRoute.FriendProfile.route
+        || currentRoute?.startsWith("friend_history") == true
 
     // ── Auto-navigation: transfer progress ───────────────────────────────
     LaunchedEffect(transferUiState.isTransferring) {
@@ -242,7 +243,7 @@ fun BoopScaffold(
         AlertDialog(
             onDismissRequest = onRejectFriendRequest,
             shape = BoopShapeMedium,
-            containerColor = MaterialTheme.colorScheme.surface,
+            containerColor = LocalBoopTokens.current.dialogSurface,
             icon = {
                 Icon(
                     imageVector = Icons.Filled.PersonAdd,
@@ -283,7 +284,7 @@ fun BoopScaffold(
         AlertDialog(
             onDismissRequest = onDismissReceivedProfile,
             shape = BoopShapeMedium,
-            containerColor = MaterialTheme.colorScheme.surface,
+            containerColor = LocalBoopTokens.current.dialogSurface,
             icon = {
                 Icon(
                     imageVector = Icons.Filled.PersonAdd,
@@ -329,7 +330,7 @@ fun BoopScaffold(
         AlertDialog(
             onDismissRequest = dismissAndNavigate,
             shape = BoopShapeMedium,
-            containerColor = MaterialTheme.colorScheme.surface,
+            containerColor = LocalBoopTokens.current.dialogSurface,
             icon = {
                 Icon(
                     imageVector = Icons.Filled.Warning,
@@ -364,7 +365,7 @@ fun BoopScaffold(
         AlertDialog(
             onDismissRequest = onDismissNfcWarning,
             shape = BoopShapeMedium,
-            containerColor = MaterialTheme.colorScheme.surface,
+            containerColor = LocalBoopTokens.current.dialogSurface,
             icon = {
                 Icon(
                     imageVector = Icons.Filled.Nfc,
@@ -407,7 +408,7 @@ fun BoopScaffold(
         AlertDialog(
             onDismissRequest = onDismissWifiWarning,
             shape = BoopShapeMedium,
-            containerColor = MaterialTheme.colorScheme.surface,
+            containerColor = LocalBoopTokens.current.dialogSurface,
             icon = {
                 Icon(
                     imageVector = Icons.Filled.Warning,
@@ -450,7 +451,7 @@ fun BoopScaffold(
         AlertDialog(
             onDismissRequest = onDismissHotspotWarning,
             shape = BoopShapeMedium,
-            containerColor = MaterialTheme.colorScheme.surface,
+            containerColor = LocalBoopTokens.current.dialogSurface,
             icon = {
                 Icon(
                     imageVector = Icons.Filled.Warning,
@@ -513,7 +514,7 @@ private fun TransferApprovalBottomSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = MaterialTheme.colorScheme.surface,
+        containerColor = LocalBoopTokens.current.dialogSurface,
         dragHandle = {
             // Subtle drag handle
             Box(

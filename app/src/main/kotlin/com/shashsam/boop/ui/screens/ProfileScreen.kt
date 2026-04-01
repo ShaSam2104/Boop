@@ -297,12 +297,12 @@ fun ProfileScreen(
                 )
                 IconButton(
                     onClick = { showAddDialog = true },
-                    enabled = profileItems.size < 6
+                    enabled = profileItems.size < 12
                 ) {
                     Icon(
                         imageVector = Icons.Filled.Add,
                         contentDescription = "Add link",
-                        tint = if (profileItems.size < 6) tokens.accent else tokens.textTertiary,
+                        tint = if (profileItems.size < 12) tokens.accent else tokens.textTertiary,
                         modifier = Modifier.size(24.dp)
                     )
                 }
@@ -451,7 +451,7 @@ private fun DisplayNameDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         shape = BoopShapeMedium,
-        containerColor = MaterialTheme.colorScheme.surface,
+        containerColor = LocalBoopTokens.current.dialogSurface,
         icon = {
             Icon(
                 imageVector = Icons.Filled.Person,

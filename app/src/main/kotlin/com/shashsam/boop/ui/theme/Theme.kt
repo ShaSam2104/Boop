@@ -43,6 +43,8 @@ data class BoopExtendedTokens(
     // Bottom navigation
     val navBarContainer: Color,
     val navIndicator: Color,
+    // Dialogs & bottom sheets
+    val dialogSurface: Color,
 )
 
 val LocalBoopTokens = staticCompositionLocalOf {
@@ -62,6 +64,7 @@ val LocalBoopTokens = staticCompositionLocalOf {
         concentricInner = Color(0xFF1A1A1A),
         navBarContainer = BoopBlack,
         navIndicator = Color(0xFF2A2A2A),
+        dialogSurface = BoopDarkSurface,
     )
 }
 
@@ -140,6 +143,7 @@ private val DarkExtendedTokens = BoopExtendedTokens(
     concentricInner = Color(0xFF1A1A1A),
     navBarContainer = BoopBlack,
     navIndicator = Color(0xFF2A2A2A),
+    dialogSurface = BoopDarkSurface,
 )
 
 private val LightExtendedTokens = BoopExtendedTokens(
@@ -158,6 +162,7 @@ private val LightExtendedTokens = BoopExtendedTokens(
     concentricInner = Color(0xFF5D57D0),
     navBarContainer = BoopPurpleSurfaceVariant,
     navIndicator = Color(0xFF5550C0),
+    dialogSurface = BoopLightDialogSurface,
 )
 
 // ─── Theme composable ────────────────────────────────────────────────────────

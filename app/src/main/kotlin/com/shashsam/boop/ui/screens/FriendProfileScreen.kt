@@ -18,6 +18,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PersonRemove
+import androidx.compose.material.icons.outlined.History
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -41,7 +42,6 @@ import com.shashsam.boop.ui.components.BentoGrid
 import com.shashsam.boop.ui.theme.BoopShapeMedium
 import com.shashsam.boop.ui.theme.GlassCard
 import com.shashsam.boop.ui.theme.LocalBoopTokens
-import com.shashsam.boop.ui.theme.NeoBrutalistButton
 import com.shashsam.boop.ui.viewmodels.ProfileViewModel
 import java.io.File
 import java.text.SimpleDateFormat
@@ -55,6 +55,7 @@ fun FriendProfileScreen(
     friend: FriendEntity?,
     onBackClick: () -> Unit,
     onRemoveFriend: (Long) -> Unit,
+    onHistoryClick: (Long) -> Unit,
     modifier: Modifier = Modifier
 ) {
     if (friend == null) {
@@ -93,8 +94,25 @@ fun FriendProfileScreen(
                 text = friend.displayName,
                 style = MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.ExtraBold,
-                color = MaterialTheme.colorScheme.onBackground
+                color = MaterialTheme.colorScheme.onBackground,
+                modifier = Modifier.weight(1f)
             )
+            IconButton(onClick = { onHistoryClick(friend.id) }) {
+                Icon(
+                    imageVector = Icons.Outlined.History,
+                    contentDescription = "Transfer history",
+                    tint = MaterialTheme.colorScheme.onBackground,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+            IconButton(onClick = { showRemoveConfirmation = true }) {
+                Icon(
+                    imageVector = Icons.Filled.PersonRemove,
+                    contentDescription = "Remove friend",
+                    tint = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
         }
 
         Spacer(modifier = Modifier.height(8.dp))
@@ -161,20 +179,6 @@ fun FriendProfileScreen(
             }
 
             Spacer(modifier = Modifier.height(16.dp))
-
-            // ── Remove friend button ─────────────────────────────────────
-            TextButton(
-                onClick = { showRemoveConfirmation = true },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text(
-                    text = "Remove Friend",
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.error
-                )
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
         }
     }
 
@@ -183,7 +187,7 @@ fun FriendProfileScreen(
         AlertDialog(
             onDismissRequest = { showRemoveConfirmation = false },
             shape = BoopShapeMedium,
-            containerColor = MaterialTheme.colorScheme.surface,
+            containerColor = LocalBoopTokens.current.dialogSurface,
             icon = {
                 Icon(
                     imageVector = Icons.Filled.PersonRemove,
