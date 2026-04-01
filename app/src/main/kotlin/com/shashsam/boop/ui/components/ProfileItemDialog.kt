@@ -37,6 +37,7 @@ import com.shashsam.boop.ui.theme.NeoBrutalistButton
 @Composable
 fun ProfileItemDialog(
     existingItem: ProfileItemEntity? = null,
+    allowFull: Boolean = true,
     onSave: (type: String, label: String, value: String, size: String) -> Unit,
     onDelete: (() -> Unit)? = null,
     onDismiss: () -> Unit
@@ -44,7 +45,7 @@ fun ProfileItemDialog(
     var type by remember { mutableStateOf(existingItem?.type ?: "link") }
     var label by remember { mutableStateOf(existingItem?.label ?: "") }
     var value by remember { mutableStateOf(existingItem?.value ?: "") }
-    var size by remember { mutableStateOf(existingItem?.size ?: "half") }
+    var size by remember { mutableStateOf(if (!allowFull && existingItem?.size == "full") "half" else existingItem?.size ?: "half") }
 
     val isEdit = existingItem != null
 
@@ -165,15 +166,20 @@ fun ProfileItemDialog(
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf("half" to "Half", "full" to "Full").forEach { (s, lbl) ->
                         val isSelected = size == s
+                        val isEnabled = s != "full" || allowFull
                         FilterChip(
                             selected = isSelected,
                             onClick = { size = s },
+                            enabled = isEnabled,
                             label = {
                                 Text(
                                     lbl,
                                     fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                    color = if (isSelected) MaterialTheme.colorScheme.onPrimary
-                                            else MaterialTheme.colorScheme.onSurfaceVariant
+                                    color = when {
+                                        !isEnabled -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
+                                        isSelected -> MaterialTheme.colorScheme.onPrimary
+                                        else -> MaterialTheme.colorScheme.onSurfaceVariant
+                                    }
                                 )
                             },
                             colors = FilterChipDefaults.filterChipColors(
@@ -183,7 +189,7 @@ fun ProfileItemDialog(
                             border = FilterChipDefaults.filterChipBorder(
                                 borderColor = Color.Transparent,
                                 selectedBorderColor = Color.Transparent,
-                                enabled = true,
+                                enabled = isEnabled,
                                 selected = isSelected
                             )
                         )
