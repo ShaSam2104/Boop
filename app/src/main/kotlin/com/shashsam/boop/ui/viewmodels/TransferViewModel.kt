@@ -134,6 +134,7 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
     private var currentConnectionDisplayName: String? = null
     private var currentConnectionUlid: String? = null
     private var pendingBefriend: Boolean = false
+    private var autoSaveProfileFromFriend: Boolean = false
     private var friendDecisionDeferred: CompletableDeferred<Boolean>? = null
 
     private val _selectedFriendId = MutableStateFlow<Long?>(null)
@@ -177,7 +178,8 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
         mimeType = mimeType,
         timestamp = timestamp,
         wasSender = wasSender,
-        fileUri = fileUriString?.let { Uri.parse(it) }
+        fileUri = fileUriString?.let { Uri.parse(it) },
+        peerUlid = peerUlid
     )
 
     // ─── Wi-Fi Direct observer ────────────────────────────────────────────────
@@ -390,7 +392,8 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
                     mimeType = progress.mimeType ?: "",
                     timestamp = System.currentTimeMillis(),
                     wasSender = currentState.isSendMode,
-                    fileUriString = historyUri
+                    fileUriString = historyUri,
+                    peerUlid = currentConnectionUlid
                 )
                 viewModelScope.launch { historyDao.insert(entity) }
                 appendLog("✅ File ${progress.fileIndex + 1}/${progress.totalFiles}: ${progress.fileName}")
@@ -522,7 +525,15 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
         if (details.type == "profile") {
             appendLog("📲 NFC tap! Receiving profile...")
             _uiState.update { it.copy(isNfcReading = false, receivedPayload = details) }
-            proceedWithProfileReceive(details)
+            // Auto-save profile if sender is already a friend
+            viewModelScope.launch {
+                val knownFriend = details.ulid.isNotBlank() && isFriend(details.ulid)
+                if (knownFriend) {
+                    Log.d(TAG, "Auto-accepting profile from friend ULID=${details.ulid}")
+                    autoSaveProfileFromFriend = true
+                }
+                proceedWithProfileReceive(details)
+            }
             return
         }
 
@@ -704,6 +715,13 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
                     profilePicPath = picPath
                 )
             )
+
+            // Retroactively tag recent history entries with the peer ULID (sender side
+            // doesn't know the peer until friend exchange completes after file transfer)
+            if (currentConnectionUlid == null) {
+                currentConnectionUlid = ulid
+                historyDao.updatePeerUlidForRecent(ulid, now - 120_000)
+            }
         }
     }
 
@@ -844,7 +862,13 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
                         if (progress.error != null) {
                             _uiState.update { it.copy(error = progress.error) }
                         } else if (progress.friendProfile != null) {
-                            _uiState.update { it.copy(receivedProfile = progress.friendProfile) }
+                            if (autoSaveProfileFromFriend) {
+                                Log.d(TAG, "Auto-saving profile from friend: ${progress.friendProfile.displayName}")
+                                handleFriendProfileReceived(progress.friendProfile)
+                                autoSaveProfileFromFriend = false
+                            } else {
+                                _uiState.update { it.copy(receivedProfile = progress.friendProfile) }
+                            }
                         }
                     }
             } finally {
@@ -912,7 +936,8 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
                     mimeType = progress.mimeType ?: "",
                     timestamp = System.currentTimeMillis(),
                     wasSender = currentState.isSendMode,
-                    fileUriString = historyUri
+                    fileUriString = historyUri,
+                    peerUlid = currentConnectionUlid
                 )
                 viewModelScope.launch { historyDao.insert(entity) }
                 _uiState.update { state ->
@@ -1012,6 +1037,7 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
         currentConnectionDisplayName = null
         currentConnectionUlid = null
         pendingBefriend = false
+        autoSaveProfileFromFriend = false
         friendDecisionDeferred?.complete(false)
         friendDecisionDeferred = null
         BoopHceService.connectionType = "file"
@@ -1033,6 +1059,7 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
         Log.d(TAG, "cleanupTransferResources()")
         TransferManager.cleanup()
         pendingBefriend = false
+        autoSaveProfileFromFriend = false
         friendDecisionDeferred?.complete(false)
         friendDecisionDeferred = null
         BoopHceService.connectionType = "file"
@@ -1047,6 +1074,7 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
         currentConnectionDisplayName = null
         currentConnectionUlid = null
         pendingBefriend = false
+        autoSaveProfileFromFriend = false
         friendDecisionDeferred?.complete(false)
         friendDecisionDeferred = null
         BoopHceService.connectionType = "file"
