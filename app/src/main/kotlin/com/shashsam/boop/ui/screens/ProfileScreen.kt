@@ -481,19 +481,16 @@ private fun DisplayNameDialog(
             )
         },
         confirmButton = {
-            TextButton(
+            NeoBrutalistButton(
                 onClick = {
                     val trimmed = nameText.trim()
                     if (trimmed.isNotEmpty()) {
                         onConfirm(trimmed)
                     }
-                }
+                },
+                enabled = nameText.trim().isNotEmpty()
             ) {
-                Text(
-                    text = "Save",
-                    fontWeight = FontWeight.Bold,
-                    color = BoopBrandPurple
-                )
+                Text("Save", fontWeight = FontWeight.ExtraBold)
             }
         },
         dismissButton = {

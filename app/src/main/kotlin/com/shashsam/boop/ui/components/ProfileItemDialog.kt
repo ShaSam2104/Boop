@@ -31,6 +31,7 @@ import com.shashsam.boop.data.ProfileItemEntity
 import com.shashsam.boop.ui.theme.BoopBrandPurple
 import com.shashsam.boop.ui.theme.BoopShapeMedium
 import com.shashsam.boop.ui.theme.LocalBoopTokens
+import com.shashsam.boop.ui.theme.NeoBrutalistButton
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -191,20 +192,17 @@ fun ProfileItemDialog(
             }
         },
         confirmButton = {
-            TextButton(
+            NeoBrutalistButton(
                 onClick = {
                     val trimLabel = label.trim()
                     val trimValue = value.trim()
                     if (trimLabel.isNotEmpty() && trimValue.isNotEmpty()) {
                         onSave(type, trimLabel, trimValue, size)
                     }
-                }
+                },
+                enabled = label.trim().isNotEmpty() && value.trim().isNotEmpty()
             ) {
-                Text(
-                    text = "Save",
-                    fontWeight = FontWeight.Bold,
-                    color = BoopBrandPurple
-                )
+                Text("Save", fontWeight = FontWeight.ExtraBold)
             }
         },
         dismissButton = {
