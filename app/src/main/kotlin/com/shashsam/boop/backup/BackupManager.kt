@@ -7,6 +7,7 @@ import com.shashsam.boop.data.BoopDatabase
 import com.shashsam.boop.data.FriendEntity
 import com.shashsam.boop.data.ProfileItemEntity
 import com.shashsam.boop.data.TransferHistoryEntity
+import androidx.room.withTransaction
 import java.io.File
 import java.time.Instant
 
@@ -117,56 +118,54 @@ class BackupManager(private val context: Context) {
 
         Log.d(TAG, "Parsed backup: v${data.version}, ${data.friends.size} friends, ${data.history.size} history, ${data.profile.items.size} items")
 
-        db.runInTransaction {
+        db.withTransaction {
             // Profile items: clear and replace
-            kotlinx.coroutines.runBlocking {
-                db.profileItemDao().deleteAll()
-                data.profile.items.forEach { item ->
-                    db.profileItemDao().insert(
-                        ProfileItemEntity(
-                            type = item.type,
-                            label = item.label,
-                            value = item.value,
-                            size = item.size,
-                            sortOrder = item.sortOrder
-                        )
+            db.profileItemDao().deleteAll()
+            data.profile.items.forEach { item ->
+                db.profileItemDao().insert(
+                    ProfileItemEntity(
+                        type = item.type,
+                        label = item.label,
+                        value = item.value,
+                        size = item.size,
+                        sortOrder = item.sortOrder
                     )
-                }
+                )
+            }
 
-                // Friends: upsert by ULID
-                data.friends.forEach { friend ->
-                    val picPath = friend.profilePicBase64?.let { base64 ->
-                        saveFriendPic(friend.ulid, BackupSerializer.decodeFromBase64(base64))
-                    }
-                    db.friendDao().upsertByUlid(
-                        FriendEntity(
-                            ulid = friend.ulid,
-                            ssid = "IMPORTED_${friend.ulid}",
-                            displayName = friend.displayName,
-                            firstSeenTimestamp = friend.firstSeenTimestamp,
-                            lastSeenTimestamp = friend.lastSeenTimestamp,
-                            lastInteractionTimestamp = friend.lastInteractionTimestamp,
-                            transferCount = friend.transferCount,
-                            profileJson = friend.profileJson,
-                            profilePicPath = picPath
-                        )
-                    )
+            // Friends: upsert by ULID
+            data.friends.forEach { friend ->
+                val picPath = friend.profilePicBase64?.let { base64 ->
+                    saveFriendPic(friend.ulid, BackupSerializer.decodeFromBase64(base64))
                 }
+                db.friendDao().upsertByUlid(
+                    FriendEntity(
+                        ulid = friend.ulid,
+                        ssid = "IMPORTED_${friend.ulid}",
+                        displayName = friend.displayName,
+                        firstSeenTimestamp = friend.firstSeenTimestamp,
+                        lastSeenTimestamp = friend.lastSeenTimestamp,
+                        lastInteractionTimestamp = friend.lastInteractionTimestamp,
+                        transferCount = friend.transferCount,
+                        profileJson = friend.profileJson,
+                        profilePicPath = picPath
+                    )
+                )
+            }
 
-                // History: append
-                data.history.forEach { entry ->
-                    db.transferHistoryDao().insert(
-                        TransferHistoryEntity(
-                            fileName = entry.fileName,
-                            fileSize = entry.fileSize,
-                            mimeType = entry.mimeType,
-                            timestamp = entry.timestamp,
-                            wasSender = entry.wasSender,
-                            fileUriString = null,
-                            peerUlid = entry.peerUlid
-                        )
+            // History: append
+            data.history.forEach { entry ->
+                db.transferHistoryDao().insert(
+                    TransferHistoryEntity(
+                        fileName = entry.fileName,
+                        fileSize = entry.fileSize,
+                        mimeType = entry.mimeType,
+                        timestamp = entry.timestamp,
+                        wasSender = entry.wasSender,
+                        fileUriString = null,
+                        peerUlid = entry.peerUlid
                     )
-                }
+                )
             }
         }
 
