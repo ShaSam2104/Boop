@@ -751,22 +751,10 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
                 put("sortOrder", item.sortOrder)
             })
         }
-        // Read profile answers from SharedPreferences
-        val answersObj = org.json.JSONObject()
-        val answersJson = settingsPrefs.getString("profile_answers", null)
-        if (answersJson != null) {
-            try {
-                val parsed = org.json.JSONObject(answersJson)
-                for (key in parsed.keys()) {
-                    answersObj.put(key, parsed.getString(key))
-                }
-            } catch (e: Exception) {
-                Log.w(TAG, "Failed to parse profile answers", e)
-            }
-        }
+        val bio = settingsPrefs.getString("bio", "") ?: ""
         val profileJson = org.json.JSONObject().apply {
             put("items", itemsArray)
-            put("answers", answersObj)
+            put("bio", bio)
         }.toString()
         return ProfileData(
             ulid = localUlid,

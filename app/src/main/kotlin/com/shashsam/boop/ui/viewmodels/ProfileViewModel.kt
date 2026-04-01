@@ -22,15 +22,15 @@ import java.io.File
 private const val TAG = "ProfileViewModel"
 private const val PREFS_NAME = "boop_settings"
 private const val KEY_PROFILE_PIC = "profile_pic_path"
-private const val KEY_PROFILE_ANSWERS = "profile_answers"
-private const val MAX_PROFILE_ITEMS = 12
+private const val KEY_BIO = "bio"
+private const val MAX_GRID_SLOTS = 12  // 3 rows × 4 columns
 
 /**
- * Parsed result from profile JSON — items plus optional "About Me" answers.
+ * Parsed result from profile JSON — items plus optional bio.
  */
 data class ParsedProfile(
     val items: List<ProfileItemEntity>,
-    val answers: Map<String, String>
+    val bio: String
 )
 
 class ProfileViewModel(application: Application) : AndroidViewModel(application) {
@@ -48,9 +48,11 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
 
     fun addProfileItem(type: String, label: String, value: String, size: String) {
         viewModelScope.launch {
-            val count = profileItemDao.getCount()
-            if (count >= MAX_PROFILE_ITEMS) {
-                Log.w(TAG, "Cannot add more than $MAX_PROFILE_ITEMS profile items")
+            val existing = profileItemDao.getAllOnce()
+            val slotsUsed = existing.fold(0) { acc, it -> acc + if (it.size == "full") 2 else 1 }
+            val newSlots = if (size == "full") 2 else 1
+            if (slotsUsed + newSlots > MAX_GRID_SLOTS) {
+                Log.w(TAG, "Cannot add item — would exceed $MAX_GRID_SLOTS grid slots (used=$slotsUsed, new=$newSlots)")
                 return@launch
             }
             val item = ProfileItemEntity(
@@ -58,7 +60,7 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
                 label = label,
                 value = value,
                 size = size,
-                sortOrder = count
+                sortOrder = existing.size
             )
             profileItemDao.insert(item)
             Log.d(TAG, "Added profile item: $label")
@@ -120,23 +122,10 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
                 put("sortOrder", item.sortOrder)
             })
         }
-        // Read profile answers from SharedPreferences
-        val answersMap = mutableMapOf<String, String>()
-        val answersJson = prefs.getString(KEY_PROFILE_ANSWERS, null)
-        if (answersJson != null) {
-            try {
-                val obj = JSONObject(answersJson)
-                for (key in obj.keys()) {
-                    answersMap[key] = obj.getString(key)
-                }
-            } catch (e: Exception) {
-                Log.w(TAG, "Failed to parse profile answers", e)
-            }
-        }
-        // New envelope format: {items: [...], answers: {...}}
+        val bio = prefs.getString(KEY_BIO, "") ?: ""
         val envelope = JSONObject().apply {
             put("items", array)
-            put("answers", JSONObject(answersMap as Map<*, *>))
+            put("bio", bio)
         }
         return envelope.toString()
     }
@@ -153,28 +142,22 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
          * format (`{items: [...], answers: {...}}`). Returns [ParsedProfile].
          */
         fun parseProfileJson(json: String?): ParsedProfile {
-            if (json.isNullOrBlank()) return ParsedProfile(emptyList(), emptyMap())
+            if (json.isNullOrBlank()) return ParsedProfile(emptyList(), "")
             return try {
                 val trimmed = json.trim()
                 if (trimmed.startsWith("[")) {
                     // Old format: bare JSON array of items
-                    ParsedProfile(parseItemsArray(JSONArray(trimmed)), emptyMap())
+                    ParsedProfile(parseItemsArray(JSONArray(trimmed)), "")
                 } else {
-                    // New envelope format
+                    // Envelope format
                     val obj = JSONObject(trimmed)
                     val items = parseItemsArray(obj.optJSONArray("items"))
-                    val answersObj = obj.optJSONObject("answers")
-                    val answers = mutableMapOf<String, String>()
-                    if (answersObj != null) {
-                        for (key in answersObj.keys()) {
-                            answers[key] = answersObj.getString(key)
-                        }
-                    }
-                    ParsedProfile(items, answers)
+                    val bio = obj.optString("bio", "")
+                    ParsedProfile(items, bio)
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to parse profile JSON", e)
-                ParsedProfile(emptyList(), emptyMap())
+                ParsedProfile(emptyList(), "")
             }
         }
 

@@ -16,7 +16,7 @@ private const val PREFS_NAME = "boop_settings"
 private const val KEY_DISPLAY_NAME = "display_name"
 private const val KEY_ULID = "user_ulid"
 private const val KEY_PROFILE_PIC = "profile_pic_path"
-private const val KEY_PROFILE_ANSWERS = "profile_answers"
+private const val KEY_BIO = "bio"
 
 /**
  * Orchestrates full export/import of Boop data (profile, friends, history).
@@ -47,20 +47,7 @@ class BackupManager(private val context: Context) {
             if (file.exists()) BackupSerializer.encodeToBase64(file.readBytes()) else null
         }
 
-        // Read profile answers
-        val profileAnswers: Map<String, String>? = prefs.getString(KEY_PROFILE_ANSWERS, null)?.let { json ->
-            try {
-                val obj = org.json.JSONObject(json)
-                val map = mutableMapOf<String, String>()
-                for (key in obj.keys()) {
-                    map[key] = obj.getString(key)
-                }
-                map.takeIf { it.isNotEmpty() }
-            } catch (e: Exception) {
-                Log.w(TAG, "Failed to parse profile answers for export", e)
-                null
-            }
-        }
+        val bio = prefs.getString(KEY_BIO, "") ?: ""
 
         // Build backup data
         val backupData = BackupSerializer.BackupData(
@@ -79,7 +66,7 @@ class BackupManager(private val context: Context) {
                         sortOrder = item.sortOrder
                     )
                 },
-                answers = profileAnswers
+                bio = bio
             ),
             friends = friends.map { friend ->
                 val friendPicBase64 = friend.profilePicPath?.let { path ->
@@ -192,11 +179,8 @@ class BackupManager(private val context: Context) {
         }
         prefs.edit().putString(KEY_DISPLAY_NAME, data.profile.displayName).apply()
 
-        // Profile answers: overwrite
-        if (!data.profile.answers.isNullOrEmpty()) {
-            val answersJson = org.json.JSONObject(data.profile.answers as Map<*, *>).toString()
-            prefs.edit().putString(KEY_PROFILE_ANSWERS, answersJson).apply()
-        }
+        // Bio: overwrite
+        prefs.edit().putString(KEY_BIO, data.profile.bio).apply()
 
         // Profile pic: overwrite
         data.profile.profilePicBase64?.let { base64 ->

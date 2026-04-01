@@ -26,7 +26,7 @@ object BackupSerializer {
         val displayName: String,
         val profilePicBase64: String?,
         val items: List<ProfileItemBackup>,
-        val answers: Map<String, String>? = null
+        val bio: String = ""
     )
 
     data class ProfileItemBackup(
@@ -77,9 +77,7 @@ object BackupSerializer {
                         })
                     }
                 })
-                if (!data.profile.answers.isNullOrEmpty()) {
-                    put("answers", JSONObject(data.profile.answers as Map<*, *>))
-                }
+                put("bio", data.profile.bio)
             })
 
             put("friends", JSONArray().apply {
@@ -124,21 +122,13 @@ object BackupSerializer {
         }
 
         val profileJson = json.getJSONObject("profile")
-        val answersObj = profileJson.optJSONObject("answers")
-        val answers: Map<String, String>? = if (answersObj != null && answersObj.length() > 0) {
-            val map = mutableMapOf<String, String>()
-            for (key in answersObj.keys()) {
-                map[key] = answersObj.getString(key)
-            }
-            map
-        } else null
         val profile = ProfileBackup(
             ulid = profileJson.optString("ulid", ""),
             displayName = profileJson.optString("displayName", "My Device"),
             profilePicBase64 = profileJson.optString("profilePicBase64", null)
                 .takeIf { it != "null" && !it.isNullOrBlank() },
             items = parseProfileItems(profileJson.optJSONArray("items")),
-            answers = answers
+            bio = profileJson.optString("bio", "")
         )
 
         val friendsArray = json.optJSONArray("friends")
