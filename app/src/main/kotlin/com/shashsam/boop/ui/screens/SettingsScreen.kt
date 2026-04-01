@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -48,6 +49,7 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -145,10 +147,13 @@ fun SettingsScreen(
                 .padding(vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            IconButton(onClick = {
-                Log.d(TAG, "Back clicked")
-                onBackClick()
-            }) {
+            IconButton(
+                onClick = {
+                    Log.d(TAG, "Back clicked")
+                    onBackClick()
+                },
+                modifier = Modifier.offset(x = (-12).dp)
+            ) {
                 Icon(
                     imageVector = Icons.Filled.ArrowBack,
                     contentDescription = "Navigate back",
@@ -156,7 +161,6 @@ fun SettingsScreen(
                     modifier = Modifier.size(28.dp)
                 )
             }
-            Spacer(modifier = Modifier.width(8.dp))
             Text(
                 text = "Settings",
                 style = MaterialTheme.typography.headlineMedium,
@@ -200,40 +204,34 @@ fun SettingsScreen(
                                 color = MaterialTheme.colorScheme.onBackground
                             )
                             Text(
-                                text = "P2P file sharing via NFC + Wi-Fi Direct",
+                                text = "Tap phones. Share files. No internet.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = tokens.textSecondary
                             )
                         }
                     }
 
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(end = 6.dp, bottom = 6.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        NeoBrutalistButton(
-                            onClick = {
-                                try {
-                                    val upiUri = Uri.parse("upi://pay?pa=03.shubhamshah-1@oksbi&pn=Boop&tn=Buy%20me%20a%20Chai&cu=INR")
-                                    context.startActivity(Intent(Intent.ACTION_VIEW, upiUri))
-                                } catch (e: Exception) {
-                                    Log.w(TAG, "No UPI app available", e)
-                                }
+                    NeoBrutalistButton(
+                        onClick = {
+                            try {
+                                val upiUri = Uri.parse("upi://pay?pa=03.shubhamshah-1@oksbi&pn=Boop&tn=Buy%20me%20a%20Chai&cu=INR")
+                                context.startActivity(Intent(Intent.ACTION_VIEW, upiUri))
+                            } catch (e: Exception) {
+                                Log.w(TAG, "No UPI app available", e)
                             }
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.Favorite,
-                                contentDescription = null,
-                                modifier = Modifier.size(20.dp)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = "Buy me a Chai",
-                                fontWeight = FontWeight.ExtraBold
-                            )
-                        }
+                        },
+                        modifier = Modifier.align(Alignment.CenterHorizontally)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Favorite,
+                            contentDescription = null,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Buy me a Chai",
+                            fontWeight = FontWeight.ExtraBold
+                        )
                     }
                 }
             }
@@ -285,7 +283,7 @@ fun SettingsScreen(
             // Receive Permission
             SettingsNavigationRow(
                 icon = Icons.Filled.Shield,
-                label = "Receive Permission",
+                label = "Who can send you files",
                 value = if (settingsState.receivePermission == "friends") "Friends" else "No one",
                 onClick = {
                     Log.d(TAG, "Receive permission row clicked")
@@ -361,6 +359,27 @@ fun SettingsScreen(
             PermissionsWarningCard()
 
             Spacer(modifier = Modifier.height(16.dp))
+
+            // ── GitHub link ─────────────────────────────────────────────────
+            Text(
+                text = "Open source on GitHub",
+                style = MaterialTheme.typography.bodySmall,
+                color = tokens.textTertiary,
+                modifier = Modifier
+                    .clickable {
+                        try {
+                            val uri = Uri.parse("https://github.com/ShaSam2104/Boop")
+                            context.startActivity(Intent(Intent.ACTION_VIEW, uri))
+                        } catch (e: Exception) {
+                            Log.w(TAG, "No browser available", e)
+                        }
+                    }
+                    .padding(vertical = 8.dp)
+                    .fillMaxWidth(),
+                textAlign = TextAlign.Center
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
         }
     }
 
@@ -710,7 +729,7 @@ private fun ReceivePermissionDialog(
         },
         title = {
             Text(
-                text = "Receive Permission",
+                text = "Who can send you files",
                 fontWeight = FontWeight.ExtraBold
             )
         },
@@ -718,14 +737,14 @@ private fun ReceivePermissionDialog(
             Column(modifier = Modifier.selectableGroup()) {
                 PermissionOption(
                     label = "Friends",
-                    description = "Auto-accept from people you've shared with before",
+                    description = "Auto-accept from friends",
                     selected = currentValue == "friends",
                     onClick = { onSelect("friends") }
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 PermissionOption(
                     label = "No one",
-                    description = "Always ask before accepting",
+                    description = "Ask every time before accepting",
                     selected = currentValue == "no_one",
                     onClick = { onSelect("no_one") }
                 )
