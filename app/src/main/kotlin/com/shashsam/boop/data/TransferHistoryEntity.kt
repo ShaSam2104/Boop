@@ -11,5 +11,6 @@ data class TransferHistoryEntity(
     val mimeType: String,
     val timestamp: Long,
     val wasSender: Boolean,
-    val fileUriString: String?
+    val fileUriString: String?,
+    val peerUlid: String? = null
 )

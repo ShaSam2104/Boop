@@ -248,6 +248,36 @@ fun BoopNavHost(
                 onRemoveFriend = { id ->
                     onRemoveFriend(id)
                     navController.popBackStack()
+                },
+                onHistoryClick = { id ->
+                    Log.d(TAG, "Navigating to FriendHistory for id=$id")
+                    navController.navigate(BoopRoute.FriendHistory.createRoute(id))
+                }
+            )
+        }
+
+        composable(
+            route = BoopRoute.FriendHistory.route,
+            arguments = listOf(navArgument("friendId") { type = NavType.LongType })
+        ) { backStackEntry ->
+            val friendId = backStackEntry.arguments?.getLong("friendId") ?: -1L
+            androidx.compose.runtime.LaunchedEffect(friendId) {
+                onSelectFriend(friendId)
+            }
+            val friendUlid = selectedFriend?.ulid
+            val friendDisplayName = selectedFriend?.displayName ?: ""
+            val filteredTransfers = if (friendUlid != null) {
+                transferUiState.recentTransfers.filter { it.peerUlid == friendUlid }
+            } else {
+                emptyList()
+            }
+            HistoryScreen(
+                recentTransfers = filteredTransfers,
+                onResend = onResendBoop,
+                friendName = friendDisplayName,
+                onBackClick = {
+                    Log.d(TAG, "FriendHistory back click")
+                    navController.popBackStack()
                 }
             )
         }

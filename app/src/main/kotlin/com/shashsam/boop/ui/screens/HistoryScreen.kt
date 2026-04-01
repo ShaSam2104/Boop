@@ -21,6 +21,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.InsertDriveFile
@@ -90,9 +91,11 @@ private fun classifyMimeType(mimeType: String): FileTypeFilter = when {
 fun HistoryScreen(
     recentTransfers: List<RecentBoop>,
     onResend: (RecentBoop) -> Unit,
+    friendName: String? = null,
+    onBackClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
-    Log.d(TAG, "HistoryScreen composed — ${recentTransfers.size} total transfers")
+    Log.d(TAG, "HistoryScreen composed — ${recentTransfers.size} total transfers, friend=$friendName")
 
     val tokens = LocalBoopTokens.current
     val haptics = rememberBoopHaptics()
@@ -126,20 +129,52 @@ fun HistoryScreen(
         Spacer(modifier = Modifier.height(16.dp))
 
         // ── Header ─────────────────────────────────────────────────────────
-        Text(
-            text = "Transfer History",
-            style = MaterialTheme.typography.headlineLarge,
-            fontWeight = FontWeight.ExtraBold,
-            color = MaterialTheme.colorScheme.onBackground
-        )
+        if (friendName != null && onBackClick != null) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(onClick = onBackClick) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "Navigate back",
+                        tint = MaterialTheme.colorScheme.onBackground,
+                        modifier = Modifier.size(28.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+                Column {
+                    Text(
+                        text = "Transfer History",
+                        style = MaterialTheme.typography.headlineMedium,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = MaterialTheme.colorScheme.onBackground
+                    )
+                    Text(
+                        text = friendName,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = tokens.textSecondary
+                    )
+                }
+            }
+        } else {
+            Text(
+                text = "Transfer History",
+                style = MaterialTheme.typography.headlineLarge,
+                fontWeight = FontWeight.ExtraBold,
+                color = MaterialTheme.colorScheme.onBackground
+            )
 
-        Spacer(modifier = Modifier.height(4.dp))
+            Spacer(modifier = Modifier.height(4.dp))
 
-        Text(
-            text = "Last 30 days",
-            style = MaterialTheme.typography.bodyMedium,
-            color = tokens.textSecondary
-        )
+            Text(
+                text = "Last 30 days",
+                style = MaterialTheme.typography.bodyMedium,
+                color = tokens.textSecondary
+            )
+        }
 
         Spacer(modifier = Modifier.height(12.dp))
 

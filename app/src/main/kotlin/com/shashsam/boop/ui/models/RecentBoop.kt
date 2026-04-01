@@ -15,5 +15,6 @@ data class RecentBoop(
     val mimeType: String,
     val timestamp: Long,
     val wasSender: Boolean,
-    val fileUri: Uri? = null
+    val fileUri: Uri? = null,
+    val peerUlid: String? = null
 )
