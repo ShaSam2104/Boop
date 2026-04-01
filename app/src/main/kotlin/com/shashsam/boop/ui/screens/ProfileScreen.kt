@@ -36,8 +36,6 @@ import androidx.compose.material.icons.filled.PersonOff
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -69,7 +67,6 @@ import com.shashsam.boop.ui.theme.GlassCard
 import com.shashsam.boop.ui.theme.LocalBoopTokens
 import com.shashsam.boop.ui.theme.NeoBrutalistButton
 import com.shashsam.boop.utils.rememberBoopHaptics
-import com.shashsam.boop.ui.viewmodels.PROFILE_QUESTIONS
 import com.shashsam.boop.ui.viewmodels.SettingsUiState
 import java.io.File
 import java.text.SimpleDateFormat
@@ -84,9 +81,9 @@ fun ProfileScreen(
     friends: List<FriendEntity>,
     profileItems: List<ProfileItemEntity>,
     profilePicPath: String?,
-    profileAnswers: Map<String, String> = emptyMap(),
-    onProfileAnswerChange: (String, String) -> Unit = { _, _ -> },
+    onBioChange: (String) -> Unit = {},
     onSettingsClick: () -> Unit = {},
+    onFriendsListClick: () -> Unit = {},
     onDisplayNameChange: (String) -> Unit = {},
     onProfilePicPick: (Uri) -> Unit = {},
     onAddItem: (type: String, label: String, value: String, size: String) -> Unit = { _, _, _, _ -> },
@@ -105,6 +102,7 @@ fun ProfileScreen(
     val haptics = rememberBoopHaptics()
     val deviceName = "${Build.MANUFACTURER.replaceFirstChar { it.uppercase() }} ${Build.MODEL}"
     var showNameDialog by remember { mutableStateOf(false) }
+    var showBioDialog by remember { mutableStateOf(false) }
     var showAddDialog by remember { mutableStateOf(false) }
     var editingItem by remember { mutableStateOf<ProfileItemEntity?>(null) }
     val photoPickerLauncher = rememberLauncherForActivityResult(
@@ -134,6 +132,14 @@ fun ProfileScreen(
                     color = MaterialTheme.colorScheme.onBackground,
                     modifier = Modifier.weight(1f)
                 )
+                IconButton(onClick = onFriendsListClick) {
+                    Icon(
+                        imageVector = Icons.Filled.Group,
+                        contentDescription = "Friends",
+                        tint = MaterialTheme.colorScheme.onBackground,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
                 IconButton(onClick = onSettingsClick) {
                     Icon(
                         imageVector = Icons.Filled.Settings,
@@ -145,15 +151,14 @@ fun ProfileScreen(
             }
         }
 
-        // ── Profile card ─────────────────────────────────────────────────
+        // ── Profile card + About Me ──────────────────────────────────────
         item {
             GlassCard(modifier = Modifier.fillMaxWidth()) {
-                Row(
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                        .padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     // Profile pic — tap to change
                     val picFile = profilePicPath?.let { File(it) }
@@ -162,7 +167,7 @@ fun ProfileScreen(
                             model = picFile,
                             contentDescription = "Profile picture — tap to change",
                             modifier = Modifier
-                                .size(56.dp)
+                                .size(72.dp)
                                 .clip(CircleShape)
                                 .clickable { photoPickerLauncher.launch("image/*") },
                             contentScale = ContentScale.Crop
@@ -173,22 +178,43 @@ fun ProfileScreen(
                             contentDescription = "Add profile picture",
                             tint = tokens.accent,
                             modifier = Modifier
-                                .size(56.dp)
+                                .size(72.dp)
                                 .clickable { photoPickerLauncher.launch("image/*") }
                         )
                     }
-                    Column(modifier = Modifier.weight(1f)) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = settingsState.displayName,
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = MaterialTheme.colorScheme.onBackground,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.clickable { haptics.tick(); showNameDialog = true }
+                    )
+                    Text(
+                        text = deviceName,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = tokens.textTertiary,
+                        textAlign = TextAlign.Center
+                    )
+                    // Bio — tap to edit
+                    if (settingsState.bio.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = settingsState.displayName,
-                            style = MaterialTheme.typography.headlineMedium,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = MaterialTheme.colorScheme.onBackground,
-                            modifier = Modifier.clickable { haptics.tick(); showNameDialog = true }
+                            text = settingsState.bio,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = tokens.textSecondary,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.clickable { haptics.tick(); showBioDialog = true }
                         )
+                    } else {
+                        Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = deviceName,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = tokens.textSecondary
+                            text = "Add a bio",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = tokens.textTertiary,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.clickable { haptics.tick(); showBioDialog = true }
                         )
                     }
                 }
@@ -284,65 +310,6 @@ fun ProfileScreen(
             Spacer(modifier = Modifier.height(20.dp))
         }
 
-        // ── About Me section ──────────────────────────────────────────────
-        item {
-            Text(
-                text = "About Me",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.ExtraBold,
-                color = MaterialTheme.colorScheme.onBackground,
-                modifier = Modifier.padding(bottom = 8.dp)
-            )
-        }
-
-        items(PROFILE_QUESTIONS.size) { index ->
-            val question = PROFILE_QUESTIONS[index]
-            val selectedAnswer = profileAnswers[question.key]
-            GlassCard(modifier = Modifier.fillMaxWidth()) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text(
-                        text = question.label,
-                        style = MaterialTheme.typography.bodyLarge,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onBackground,
-                        modifier = Modifier.weight(1f)
-                    )
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf(question.optionA, question.optionB).forEach { option ->
-                            val isSelected = selectedAnswer == option
-                            FilterChip(
-                                selected = isSelected,
-                                onClick = {
-                                    haptics.tick()
-                                    onProfileAnswerChange(question.key, option)
-                                },
-                                label = {
-                                    Text(
-                                        text = option,
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
-                                    )
-                                },
-                                colors = FilterChipDefaults.filterChipColors(
-                                    selectedContainerColor = BoopBrandPurple,
-                                    selectedLabelColor = MaterialTheme.colorScheme.onPrimary
-                                )
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-        item {
-            Spacer(modifier = Modifier.height(20.dp))
-        }
-
         // ── Bento section ────────────────────────────────────────────────
         item {
             Row(
@@ -359,14 +326,16 @@ fun ProfileScreen(
                     color = MaterialTheme.colorScheme.onBackground,
                     modifier = Modifier.weight(1f)
                 )
+                val slotsUsed = profileItems.fold(0) { acc, it -> acc + if (it.size == "full") 2 else 1 }
+                val canAdd = slotsUsed < 12
                 IconButton(
                     onClick = { showAddDialog = true },
-                    enabled = profileItems.size < 12
+                    enabled = canAdd
                 ) {
                     Icon(
                         imageVector = Icons.Filled.Add,
                         contentDescription = "Add link",
-                        tint = if (profileItems.size < 12) tokens.accent else tokens.textTertiary,
+                        tint = if (canAdd) tokens.accent else tokens.textTertiary,
                         modifier = Modifier.size(24.dp)
                     )
                 }
@@ -392,27 +361,33 @@ fun ProfileScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(bottom = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(
-                    imageVector = Icons.Filled.Group,
-                    contentDescription = null,
-                    tint = tokens.accent,
-                    modifier = Modifier.size(24.dp)
-                )
                 Text(
                     text = "Friends",
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.ExtraBold,
                     color = MaterialTheme.colorScheme.onBackground
                 )
-                Text(
-                    text = "${friends.size}",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = tokens.textSecondary
-                )
+                if (friends.isNotEmpty()) {
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "${friends.size}",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = tokens.textSecondary
+                    )
+                }
+                Spacer(modifier = Modifier.weight(1f))
+                if (friends.isNotEmpty()) {
+                    Text(
+                        text = "View All",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = tokens.accent,
+                        modifier = Modifier.clickable { onFriendsListClick() }
+                    )
+                }
             }
         }
 
@@ -449,7 +424,7 @@ fun ProfileScreen(
                 }
             }
         } else {
-            items(friends, key = { it.id }) { friend ->
+            items(friends.take(3), key = { it.id }) { friend ->
                 FriendCard(
                     friend = friend,
                     onClick = { onFriendClick(friend) }
@@ -471,6 +446,18 @@ fun ProfileScreen(
                 showNameDialog = false
             },
             onDismiss = { showNameDialog = false }
+        )
+    }
+
+    // ── Bio dialog ──────────────────────────────────────────────────────
+    if (showBioDialog) {
+        BioDialog(
+            currentBio = settingsState.bio,
+            onConfirm = { newBio ->
+                onBioChange(newBio)
+                showBioDialog = false
+            },
+            onDismiss = { showBioDialog = false }
         )
     }
 
@@ -553,6 +540,60 @@ private fun DisplayNameDialog(
                     }
                 },
                 enabled = nameText.trim().isNotEmpty()
+            ) {
+                Text("Save", fontWeight = FontWeight.ExtraBold)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(
+                    text = "Cancel",
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    )
+}
+
+// ─── Bio Dialog ─────────────────────────────────────────────────────────────
+
+@Composable
+private fun BioDialog(
+    currentBio: String,
+    onConfirm: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var bioText by remember { mutableStateOf(currentBio) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        shape = BoopShapeMedium,
+        containerColor = LocalBoopTokens.current.dialogSurface,
+        title = {
+            Text(
+                text = "Edit Bio",
+                fontWeight = FontWeight.ExtraBold
+            )
+        },
+        text = {
+            OutlinedTextField(
+                value = bioText,
+                onValueChange = { if (it.length <= 100) bioText = it },
+                singleLine = true,
+                label = { Text("Bio") },
+                supportingText = { Text("${bioText.length}/100") },
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = BoopBrandPurple,
+                    cursorColor = BoopBrandPurple,
+                    focusedLabelColor = BoopBrandPurple
+                ),
+                modifier = Modifier.fillMaxWidth()
+            )
+        },
+        confirmButton = {
+            NeoBrutalistButton(
+                onClick = { onConfirm(bioText.trim()) }
             ) {
                 Text("Save", fontWeight = FontWeight.ExtraBold)
             }

@@ -6,11 +6,11 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
@@ -33,18 +33,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.shashsam.boop.data.FriendEntity
 import com.shashsam.boop.ui.components.BentoGrid
-import com.shashsam.boop.ui.theme.BoopBrandPurple
 import com.shashsam.boop.ui.theme.BoopShapeMedium
 import com.shashsam.boop.ui.theme.GlassCard
 import com.shashsam.boop.ui.theme.LocalBoopTokens
-import com.shashsam.boop.ui.viewmodels.PROFILE_QUESTIONS
+import com.shashsam.boop.ui.theme.NeoBrutalistButton
 import com.shashsam.boop.ui.viewmodels.ProfileViewModel
 import java.io.File
 import java.text.SimpleDateFormat
@@ -62,8 +60,7 @@ fun FriendProfileScreen(
     modifier: Modifier = Modifier
 ) {
     if (friend == null) {
-        Log.w(TAG, "Friend is null — navigating back")
-        onBackClick()
+        Log.d(TAG, "Friend not loaded yet — waiting for recomposition")
         return
     }
 
@@ -71,7 +68,7 @@ fun FriendProfileScreen(
     val dateFormat = SimpleDateFormat("MMM d, yyyy", Locale.getDefault())
     val parsedProfile = ProfileViewModel.parseProfileJson(friend.profileJson)
     val profileItems = parsedProfile.items
-    val profileAnswers = parsedProfile.answers
+    val bio = parsedProfile.bio
     var showRemoveConfirmation by remember { mutableStateOf(false) }
 
     Column(
@@ -86,7 +83,10 @@ fun FriendProfileScreen(
                 .padding(vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            IconButton(onClick = onBackClick) {
+            IconButton(
+                onClick = onBackClick,
+                modifier = Modifier.offset(x = (-12).dp)
+            ) {
                 Icon(
                     imageVector = Icons.Filled.ArrowBack,
                     contentDescription = "Navigate back",
@@ -94,7 +94,6 @@ fun FriendProfileScreen(
                     modifier = Modifier.size(28.dp)
                 )
             }
-            Spacer(modifier = Modifier.width(8.dp))
             Text(
                 text = friend.displayName,
                 style = MaterialTheme.typography.headlineMedium,
@@ -166,48 +165,12 @@ fun FriendProfileScreen(
                         style = MaterialTheme.typography.bodyMedium,
                         color = tokens.textSecondary
                     )
-                }
-            }
-
-            // ── About Me (read-only) ──────────────────────────────────
-            if (profileAnswers.isNotEmpty()) {
-                Text(
-                    text = "About Me",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = MaterialTheme.colorScheme.onBackground
-                )
-                PROFILE_QUESTIONS.forEach { question ->
-                    val answer = profileAnswers[question.key]
-                    if (answer != null) {
-                        GlassCard(modifier = Modifier.fillMaxWidth()) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text(
-                                    text = question.label,
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onBackground
-                                )
-                                androidx.compose.material3.Surface(
-                                    shape = MaterialTheme.shapes.small,
-                                    color = BoopBrandPurple,
-                                    contentColor = Color.White
-                                ) {
-                                    Text(
-                                        text = answer,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        fontWeight = FontWeight.Bold,
-                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-                                    )
-                                }
-                            }
-                        }
+                    if (bio.isNotEmpty()) {
+                        Text(
+                            text = bio,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = tokens.textSecondary
+                        )
                     }
                 }
             }
@@ -230,7 +193,7 @@ fun FriendProfileScreen(
         }
     }
 
-    // ── Remove confirmation dialog ─────────────────────────────────────
+    // ── Remove confirmation dialog ─────────────────────────────────────────
     if (showRemoveConfirmation) {
         AlertDialog(
             onDismissRequest = { showRemoveConfirmation = false },
@@ -258,15 +221,14 @@ fun FriendProfileScreen(
                 )
             },
             confirmButton = {
-                TextButton(onClick = {
-                    showRemoveConfirmation = false
-                    onRemoveFriend(friend.id)
-                }) {
-                    Text(
-                        text = "Remove",
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.error
-                    )
+                NeoBrutalistButton(
+                    onClick = {
+                        showRemoveConfirmation = false
+                        onRemoveFriend(friend.id)
+                    },
+                    shadowColor = MaterialTheme.colorScheme.error
+                ) {
+                    Text("Remove", fontWeight = FontWeight.ExtraBold)
                 }
             },
             dismissButton = {
@@ -281,3 +243,4 @@ fun FriendProfileScreen(
         )
     }
 }
+
