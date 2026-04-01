@@ -2,6 +2,7 @@ package com.shashsam.boop.ui.screens
 
 import android.content.Intent
 import android.util.Log
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -11,11 +12,11 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -24,7 +25,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.CloudUpload
-import androidx.compose.material.icons.filled.InsertDriveFile
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material3.FilterChip
@@ -136,7 +136,10 @@ fun HistoryScreen(
                     .padding(bottom = 4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                IconButton(onClick = onBackClick) {
+                IconButton(
+                    onClick = onBackClick,
+                    modifier = Modifier.offset(x = (-12).dp)
+                ) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = "Navigate back",
@@ -144,21 +147,19 @@ fun HistoryScreen(
                         modifier = Modifier.size(28.dp)
                     )
                 }
-                Spacer(modifier = Modifier.width(8.dp))
-                Column {
-                    Text(
-                        text = "Transfer History",
-                        style = MaterialTheme.typography.headlineMedium,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = MaterialTheme.colorScheme.onBackground
-                    )
-                    Text(
-                        text = friendName,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = tokens.textSecondary
-                    )
-                }
+                Text(
+                    text = "Transfer History",
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = MaterialTheme.colorScheme.onBackground
+                )
             }
+
+            Text(
+                text = friendName,
+                style = MaterialTheme.typography.bodyMedium,
+                color = tokens.textSecondary
+            )
         } else {
             Text(
                 text = "Transfer History",
@@ -303,7 +304,8 @@ fun HistoryScreen(
                     HistoryItem(
                         boop = boop,
                         onOpen = {
-                            boop.fileUri?.let { uri ->
+                            val uri = boop.fileUri
+                            if (uri != null) {
                                 Log.d(TAG, "Opening file: ${boop.fileName}")
                                 val intent = Intent(Intent.ACTION_VIEW).apply {
                                     setDataAndType(uri, boop.mimeType.ifEmpty { "*/*" })
@@ -313,7 +315,11 @@ fun HistoryScreen(
                                     context.startActivity(intent)
                                 } catch (e: Exception) {
                                     Log.w(TAG, "No app to open ${boop.fileName}", e)
+                                    Toast.makeText(context, "No app found to open this file", Toast.LENGTH_SHORT).show()
                                 }
+                            } else {
+                                Log.d(TAG, "No URI for file: ${boop.fileName}")
+                                Toast.makeText(context, "File no longer available", Toast.LENGTH_SHORT).show()
                             }
                         },
                         onResend = { onResend(boop) }
@@ -341,7 +347,7 @@ private fun HistoryItem(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable(enabled = boop.fileUri != null, onClick = { haptics.click(); onOpen() })
+                .clickable(onClick = { haptics.click(); onOpen() })
                 .padding(12.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -387,28 +393,19 @@ private fun HistoryItem(
                 )
             }
 
-            // Re-share button (only if we have a URI)
-            if (boop.fileUri != null) {
-                IconButton(
-                    onClick = {
-                        Log.d(TAG, "Re-share: ${boop.fileName}")
-                        haptics.click()
-                        onResend()
-                    },
-                    modifier = Modifier.size(36.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Share,
-                        contentDescription = "Re-share",
-                        tint = tokens.accent,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-            } else {
+            // Re-share button
+            IconButton(
+                onClick = {
+                    Log.d(TAG, "Re-share: ${boop.fileName}")
+                    haptics.click()
+                    onResend()
+                },
+                modifier = Modifier.size(36.dp)
+            ) {
                 Icon(
-                    imageVector = Icons.Filled.InsertDriveFile,
-                    contentDescription = null,
-                    tint = tokens.textTertiary,
+                    imageVector = Icons.Filled.Share,
+                    contentDescription = "Re-share",
+                    tint = tokens.accent,
                     modifier = Modifier.size(20.dp)
                 )
             }
