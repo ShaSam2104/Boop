@@ -22,7 +22,7 @@ import java.io.File
 private const val TAG = "ProfileViewModel"
 private const val PREFS_NAME = "boop_settings"
 private const val KEY_PROFILE_PIC = "profile_pic_path"
-private const val MAX_PROFILE_ITEMS = 6
+private const val MAX_PROFILE_ITEMS = 12
 
 class ProfileViewModel(application: Application) : AndroidViewModel(application) {
 
