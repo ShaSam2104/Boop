@@ -83,7 +83,7 @@ fun ProfileItemDialog(
                                 )
                             },
                             colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = BoopBrandPurple,
+                                selectedContainerColor = MaterialTheme.colorScheme.primary,
                                 selectedLabelColor = MaterialTheme.colorScheme.onPrimary
                             ),
                             border = FilterChipDefaults.filterChipBorder(
@@ -177,7 +177,7 @@ fun ProfileItemDialog(
                                 )
                             },
                             colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = BoopBrandPurple,
+                                selectedContainerColor = MaterialTheme.colorScheme.primary,
                                 selectedLabelColor = MaterialTheme.colorScheme.onPrimary
                             ),
                             border = FilterChipDefaults.filterChipBorder(

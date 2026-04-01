@@ -147,8 +147,8 @@ private val DarkExtendedTokens = BoopExtendedTokens(
 )
 
 private val LightExtendedTokens = BoopExtendedTokens(
-    accent = BoopAccentYellow,
-    glowColor = BoopGlowYellow,
+    accent = Color.White,
+    glowColor = Color(0x26FFFFFF),  // 15% white glow
     glassBg = Color(0x26FFFFFF),
     glassBorder = Color(0x33FFFFFF),
     cardBackground = Color(0x1AFFFFFF),
