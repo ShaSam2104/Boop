@@ -36,6 +36,8 @@ import androidx.compose.material.icons.filled.PersonOff
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -67,6 +69,7 @@ import com.shashsam.boop.ui.theme.GlassCard
 import com.shashsam.boop.ui.theme.LocalBoopTokens
 import com.shashsam.boop.ui.theme.NeoBrutalistButton
 import com.shashsam.boop.utils.rememberBoopHaptics
+import com.shashsam.boop.ui.viewmodels.PROFILE_QUESTIONS
 import com.shashsam.boop.ui.viewmodels.SettingsUiState
 import java.io.File
 import java.text.SimpleDateFormat
@@ -81,6 +84,8 @@ fun ProfileScreen(
     friends: List<FriendEntity>,
     profileItems: List<ProfileItemEntity>,
     profilePicPath: String?,
+    profileAnswers: Map<String, String> = emptyMap(),
+    onProfileAnswerChange: (String, String) -> Unit = { _, _ -> },
     onSettingsClick: () -> Unit = {},
     onDisplayNameChange: (String) -> Unit = {},
     onProfilePicPick: (Uri) -> Unit = {},
@@ -276,6 +281,65 @@ fun ProfileScreen(
                     }
                 }
             }
+            Spacer(modifier = Modifier.height(20.dp))
+        }
+
+        // ── About Me section ──────────────────────────────────────────────
+        item {
+            Text(
+                text = "About Me",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.ExtraBold,
+                color = MaterialTheme.colorScheme.onBackground,
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
+        }
+
+        items(PROFILE_QUESTIONS.size) { index ->
+            val question = PROFILE_QUESTIONS[index]
+            val selectedAnswer = profileAnswers[question.key]
+            GlassCard(modifier = Modifier.fillMaxWidth()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = question.label,
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onBackground,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf(question.optionA, question.optionB).forEach { option ->
+                            val isSelected = selectedAnswer == option
+                            FilterChip(
+                                selected = isSelected,
+                                onClick = {
+                                    haptics.tick()
+                                    onProfileAnswerChange(question.key, option)
+                                },
+                                label = {
+                                    Text(
+                                        text = option,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                    )
+                                },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = BoopBrandPurple,
+                                    selectedLabelColor = MaterialTheme.colorScheme.onPrimary
+                                )
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        item {
             Spacer(modifier = Modifier.height(20.dp))
         }
 

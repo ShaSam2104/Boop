@@ -739,21 +739,35 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
                 null
             }
         }
-        // Read profile items from DB directly to build JSON
+        // Read profile items from DB directly to build JSON (new envelope format)
         val items = profileItemDao.getAllOnce()
-        val profileJson = if (items.isNotEmpty()) {
-            val array = org.json.JSONArray()
-            for (item in items) {
-                array.put(org.json.JSONObject().apply {
-                    put("type", item.type)
-                    put("label", item.label)
-                    put("value", item.value)
-                    put("size", item.size)
-                    put("sortOrder", item.sortOrder)
-                })
+        val itemsArray = org.json.JSONArray()
+        for (item in items) {
+            itemsArray.put(org.json.JSONObject().apply {
+                put("type", item.type)
+                put("label", item.label)
+                put("value", item.value)
+                put("size", item.size)
+                put("sortOrder", item.sortOrder)
+            })
+        }
+        // Read profile answers from SharedPreferences
+        val answersObj = org.json.JSONObject()
+        val answersJson = settingsPrefs.getString("profile_answers", null)
+        if (answersJson != null) {
+            try {
+                val parsed = org.json.JSONObject(answersJson)
+                for (key in parsed.keys()) {
+                    answersObj.put(key, parsed.getString(key))
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to parse profile answers", e)
             }
-            array.toString()
-        } else ""
+        }
+        val profileJson = org.json.JSONObject().apply {
+            put("items", itemsArray)
+            put("answers", answersObj)
+        }.toString()
         return ProfileData(
             ulid = localUlid,
             displayName = displayName,

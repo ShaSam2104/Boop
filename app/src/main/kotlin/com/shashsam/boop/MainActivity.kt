@@ -297,6 +297,9 @@ class MainActivity : ComponentActivity() {
                         },
                         onReshowWarnings = {
                             viewModel.reshowWarnings()
+                        },
+                        onProfileAnswerChange = { key, value ->
+                            settingsViewModel.setProfileAnswer(key, value)
                         }
                     )
                 }

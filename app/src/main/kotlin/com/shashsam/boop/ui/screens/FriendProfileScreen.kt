@@ -33,15 +33,18 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.shashsam.boop.data.FriendEntity
 import com.shashsam.boop.ui.components.BentoGrid
+import com.shashsam.boop.ui.theme.BoopBrandPurple
 import com.shashsam.boop.ui.theme.BoopShapeMedium
 import com.shashsam.boop.ui.theme.GlassCard
 import com.shashsam.boop.ui.theme.LocalBoopTokens
+import com.shashsam.boop.ui.viewmodels.PROFILE_QUESTIONS
 import com.shashsam.boop.ui.viewmodels.ProfileViewModel
 import java.io.File
 import java.text.SimpleDateFormat
@@ -66,7 +69,9 @@ fun FriendProfileScreen(
 
     val tokens = LocalBoopTokens.current
     val dateFormat = SimpleDateFormat("MMM d, yyyy", Locale.getDefault())
-    val profileItems = ProfileViewModel.parseProfileJson(friend.profileJson)
+    val parsedProfile = ProfileViewModel.parseProfileJson(friend.profileJson)
+    val profileItems = parsedProfile.items
+    val profileAnswers = parsedProfile.answers
     var showRemoveConfirmation by remember { mutableStateOf(false) }
 
     Column(
@@ -161,6 +166,49 @@ fun FriendProfileScreen(
                         style = MaterialTheme.typography.bodyMedium,
                         color = tokens.textSecondary
                     )
+                }
+            }
+
+            // ── About Me (read-only) ──────────────────────────────────
+            if (profileAnswers.isNotEmpty()) {
+                Text(
+                    text = "About Me",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = MaterialTheme.colorScheme.onBackground
+                )
+                PROFILE_QUESTIONS.forEach { question ->
+                    val answer = profileAnswers[question.key]
+                    if (answer != null) {
+                        GlassCard(modifier = Modifier.fillMaxWidth()) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = question.label,
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onBackground
+                                )
+                                androidx.compose.material3.Surface(
+                                    shape = MaterialTheme.shapes.small,
+                                    color = BoopBrandPurple,
+                                    contentColor = Color.White
+                                ) {
+                                    Text(
+                                        text = answer,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
             }
 

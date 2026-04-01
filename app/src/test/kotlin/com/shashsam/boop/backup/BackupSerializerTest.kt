@@ -161,4 +161,23 @@ class BackupSerializerTest {
         assertEquals(data.friends.size, parsed.friends.size)
         assertEquals(data.history.size, parsed.history.size)
     }
+
+    @Test
+    fun `profile answers round trip`() {
+        val answers = mapOf("prefer_contact" to "Texting", "gc_permission" to "Yes")
+        val data = sampleData().copy(
+            profile = sampleData().profile.copy(answers = answers)
+        )
+        val parsed = BackupSerializer.deserialize(BackupSerializer.serialize(data))
+        assertEquals(answers, parsed.profile.answers)
+    }
+
+    @Test
+    fun `null answers backward compatible`() {
+        val data = sampleData().copy(
+            profile = sampleData().profile.copy(answers = null)
+        )
+        val parsed = BackupSerializer.deserialize(BackupSerializer.serialize(data))
+        assertNull(parsed.profile.answers)
+    }
 }

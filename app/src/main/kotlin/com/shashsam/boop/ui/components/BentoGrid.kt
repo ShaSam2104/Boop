@@ -36,6 +36,7 @@ import com.shashsam.boop.data.ProfileItemEntity
 import com.shashsam.boop.ui.theme.GlassCard
 import com.shashsam.boop.ui.theme.LocalBoopTokens
 import com.shashsam.boop.utils.resolveSocialIcon
+import com.shashsam.boop.utils.resolveSocialIconColor
 
 private const val TAG = "BentoGrid"
 private const val GRID_COLUMNS = 4
@@ -108,6 +109,7 @@ private fun BentoItemHalf(
     val tokens = LocalBoopTokens.current
     val context = LocalContext.current
     val icon = resolveSocialIcon(item.type, item.value)
+    val iconColor = resolveSocialIconColor(item.type, item.value, tokens.accent)
 
     GlassCard(
         modifier = modifier.then(
@@ -139,13 +141,13 @@ private fun BentoItemHalf(
                 is ImageVector -> Icon(
                     imageVector = icon,
                     contentDescription = item.label,
-                    tint = tokens.accent,
+                    tint = iconColor,
                     modifier = Modifier.size(36.dp)
                 )
                 is Int -> Icon(
                     painter = painterResource(id = icon),
                     contentDescription = item.label,
-                    tint = tokens.accent,
+                    tint = iconColor,
                     modifier = Modifier.size(36.dp)
                 )
             }
@@ -169,6 +171,7 @@ private fun BentoItemFull(
     val tokens = LocalBoopTokens.current
     val context = LocalContext.current
     val icon = resolveSocialIcon(item.type, item.value)
+    val iconColor = resolveSocialIconColor(item.type, item.value, tokens.accent)
 
     GlassCard(
         modifier = modifier.then(
@@ -204,13 +207,13 @@ private fun BentoItemFull(
                     is ImageVector -> Icon(
                         imageVector = icon,
                         contentDescription = item.label,
-                        tint = tokens.accent,
+                        tint = iconColor,
                         modifier = Modifier.size(32.dp)
                     )
                     is Int -> Icon(
                         painter = painterResource(id = icon),
                         contentDescription = item.label,
-                        tint = tokens.accent,
+                        tint = iconColor,
                         modifier = Modifier.size(32.dp)
                     )
                 }

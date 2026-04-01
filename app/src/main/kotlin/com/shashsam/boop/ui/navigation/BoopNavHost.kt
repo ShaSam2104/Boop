@@ -68,6 +68,7 @@ fun BoopNavHost(
     onShareProfileClick: () -> Unit,
     onCancelProfileShare: () -> Unit,
     onReshowWarnings: () -> Unit,
+    onProfileAnswerChange: (String, String) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier
 ) {
     NavHost(
@@ -170,6 +171,8 @@ fun BoopNavHost(
                 friends = friends,
                 profileItems = profileItems,
                 profilePicPath = profilePicPath,
+                profileAnswers = settingsState.profileAnswers,
+                onProfileAnswerChange = onProfileAnswerChange,
                 onSettingsClick = {
                     Log.d(TAG, "Navigating to Settings from Profile")
                     navController.navigate(BoopRoute.Settings.route) {

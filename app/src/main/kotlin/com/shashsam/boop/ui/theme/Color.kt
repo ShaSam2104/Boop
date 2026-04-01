@@ -51,6 +51,12 @@ val GlassDarkBorder = Color(0x33000000)   // 20% black (kept for reference)
 // ─── Dialog ──────────────────────────────────────────────────────────────────
 val BoopLightDialogSurface = Color(0xFF1A1A2E)  // deep navy for light-mode dialogs
 
+// ─── Social brand colors ────────────────────────────────────────────────────
+val SocialInstagram = Color(0xFFE1306C)
+val SocialLinkedIn = Color(0xFF0A66C2)
+val SocialYouTube = Color(0xFFFF0000)
+val SocialFacebook = Color(0xFF1877F2)
+
 // ─── Glow ───────────────────────────────────────────────────────────────────
 val BoopGlowYellow = Color(0x26F8FFA3)    // 15% accent yellow
 val BoopGlowPurple = Color(0x26736DEE)    // 15% brand purple

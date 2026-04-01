@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import org.json.JSONObject
 
 private const val TAG = "SettingsViewModel"
 private const val PREFS_NAME = "boop_settings"
@@ -17,6 +18,24 @@ private const val KEY_VIBRATION = "vibration_enabled"
 private const val KEY_DISPLAY_NAME = "display_name"
 private const val KEY_DARK_MODE = "dark_mode_enabled"
 private const val KEY_RECEIVE_PERMISSION = "receive_permission"
+private const val KEY_PROFILE_ANSWERS = "profile_answers"
+
+/**
+ * A predefined profile question with a fixed key and two answer options.
+ */
+data class ProfileQuestion(
+    val key: String,
+    val label: String,
+    val optionA: String,
+    val optionB: String
+)
+
+/** The 3 predefined "About Me" questions shown on profiles. */
+val PROFILE_QUESTIONS = listOf(
+    ProfileQuestion("prefer_contact", "I prefer", "Texting", "Calling"),
+    ProfileQuestion("gc_permission", "Add me to GCs without asking", "Yes", "No"),
+    ProfileQuestion("reply_speed", "I reply", "Fast", "Slow")
+)
 
 /**
  * Aggregate settings state exposed to the Settings screen.
@@ -26,7 +45,8 @@ data class SettingsUiState(
     val vibrationEnabled: Boolean = true,
     val displayName: String = "My Device",
     val darkModeEnabled: Boolean = true,
-    val receivePermission: String = "friends"
+    val receivePermission: String = "friends",
+    val profileAnswers: Map<String, String> = emptyMap()
 )
 
 /**
@@ -46,8 +66,24 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             vibrationEnabled = prefs.getBoolean(KEY_VIBRATION, true),
             displayName = prefs.getString(KEY_DISPLAY_NAME, "My Device") ?: "My Device",
             darkModeEnabled = prefs.getBoolean(KEY_DARK_MODE, true),
-            receivePermission = prefs.getString(KEY_RECEIVE_PERMISSION, "friends") ?: "friends"
+            receivePermission = prefs.getString(KEY_RECEIVE_PERMISSION, "friends") ?: "friends",
+            profileAnswers = loadProfileAnswers()
         ).also { Log.d(TAG, "Loaded settings: $it") }
+    }
+
+    private fun loadProfileAnswers(): Map<String, String> {
+        val json = prefs.getString(KEY_PROFILE_ANSWERS, null) ?: return emptyMap()
+        return try {
+            val obj = JSONObject(json)
+            val map = mutableMapOf<String, String>()
+            for (key in obj.keys()) {
+                map[key] = obj.getString(key)
+            }
+            map
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to parse profile answers", e)
+            emptyMap()
+        }
     }
 
     fun setNotificationsEnabled(enabled: Boolean) {
@@ -78,5 +114,14 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         Log.d(TAG, "setReceivePermission=$value")
         prefs.edit().putString(KEY_RECEIVE_PERMISSION, value).apply()
         _uiState.update { it.copy(receivePermission = value) }
+    }
+
+    fun setProfileAnswer(key: String, value: String) {
+        Log.d(TAG, "setProfileAnswer key=$key value=$value")
+        val updated = _uiState.value.profileAnswers.toMutableMap()
+        updated[key] = value
+        val json = JSONObject(updated as Map<*, *>).toString()
+        prefs.edit().putString(KEY_PROFILE_ANSWERS, json).apply()
+        _uiState.update { it.copy(profileAnswers = updated) }
     }
 }

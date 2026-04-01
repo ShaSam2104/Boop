@@ -59,4 +59,21 @@ class SettingsUiStateTest {
         val b = SettingsUiState(displayName = "Test")
         assertEquals(a, b)
     }
+
+    @Test
+    fun `default profileAnswers is empty`() {
+        val state = SettingsUiState()
+        assertTrue("profileAnswers default empty", state.profileAnswers.isEmpty())
+    }
+
+    @Test
+    fun `copy with profileAnswers`() {
+        val answers = mapOf("prefer_contact" to "Texting", "reply_speed" to "Fast")
+        val state = SettingsUiState().copy(profileAnswers = answers)
+        assertEquals(2, state.profileAnswers.size)
+        assertEquals("Texting", state.profileAnswers["prefer_contact"])
+        assertEquals("Fast", state.profileAnswers["reply_speed"])
+        // Other fields unchanged
+        assertEquals("My Device", state.displayName)
+    }
 }

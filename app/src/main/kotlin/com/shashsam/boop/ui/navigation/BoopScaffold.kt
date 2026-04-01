@@ -113,6 +113,7 @@ fun BoopScaffold(
     onShareProfileClick: () -> Unit,
     onCancelProfileShare: () -> Unit,
     onReshowWarnings: () -> Unit,
+    onProfileAnswerChange: (String, String) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier
 ) {
     CompositionLocalProvider(LocalHapticsEnabled provides settingsState.vibrationEnabled) {
@@ -223,6 +224,7 @@ fun BoopScaffold(
             onShareProfileClick = onShareProfileClick,
             onCancelProfileShare = onCancelProfileShare,
             onReshowWarnings = onReshowWarnings,
+            onProfileAnswerChange = onProfileAnswerChange,
             modifier = Modifier.padding(innerPadding)
         )
     }

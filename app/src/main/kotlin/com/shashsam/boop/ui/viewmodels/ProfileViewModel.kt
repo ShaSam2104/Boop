@@ -22,7 +22,16 @@ import java.io.File
 private const val TAG = "ProfileViewModel"
 private const val PREFS_NAME = "boop_settings"
 private const val KEY_PROFILE_PIC = "profile_pic_path"
+private const val KEY_PROFILE_ANSWERS = "profile_answers"
 private const val MAX_PROFILE_ITEMS = 12
+
+/**
+ * Parsed result from profile JSON — items plus optional "About Me" answers.
+ */
+data class ParsedProfile(
+    val items: List<ProfileItemEntity>,
+    val answers: Map<String, String>
+)
 
 class ProfileViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -111,7 +120,25 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
                 put("sortOrder", item.sortOrder)
             })
         }
-        return array.toString()
+        // Read profile answers from SharedPreferences
+        val answersMap = mutableMapOf<String, String>()
+        val answersJson = prefs.getString(KEY_PROFILE_ANSWERS, null)
+        if (answersJson != null) {
+            try {
+                val obj = JSONObject(answersJson)
+                for (key in obj.keys()) {
+                    answersMap[key] = obj.getString(key)
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to parse profile answers", e)
+            }
+        }
+        // New envelope format: {items: [...], answers: {...}}
+        val envelope = JSONObject().apply {
+            put("items", array)
+            put("answers", JSONObject(answersMap as Map<*, *>))
+        }
+        return envelope.toString()
     }
 
     fun getProfilePicFile(): File? {
@@ -121,23 +148,47 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
     }
 
     companion object {
-        fun parseProfileJson(json: String?): List<ProfileItemEntity> {
-            if (json.isNullOrBlank()) return emptyList()
+        /**
+         * Parses profile JSON in either old format (`[...]` array) or new envelope
+         * format (`{items: [...], answers: {...}}`). Returns [ParsedProfile].
+         */
+        fun parseProfileJson(json: String?): ParsedProfile {
+            if (json.isNullOrBlank()) return ParsedProfile(emptyList(), emptyMap())
             return try {
-                val array = JSONArray(json)
-                (0 until array.length()).map { i ->
-                    val obj = array.getJSONObject(i)
-                    ProfileItemEntity(
-                        type = obj.getString("type"),
-                        label = obj.getString("label"),
-                        value = obj.getString("value"),
-                        size = obj.optString("size", "half"),
-                        sortOrder = obj.optInt("sortOrder", i)
-                    )
+                val trimmed = json.trim()
+                if (trimmed.startsWith("[")) {
+                    // Old format: bare JSON array of items
+                    ParsedProfile(parseItemsArray(JSONArray(trimmed)), emptyMap())
+                } else {
+                    // New envelope format
+                    val obj = JSONObject(trimmed)
+                    val items = parseItemsArray(obj.optJSONArray("items"))
+                    val answersObj = obj.optJSONObject("answers")
+                    val answers = mutableMapOf<String, String>()
+                    if (answersObj != null) {
+                        for (key in answersObj.keys()) {
+                            answers[key] = answersObj.getString(key)
+                        }
+                    }
+                    ParsedProfile(items, answers)
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to parse profile JSON", e)
-                emptyList()
+                ParsedProfile(emptyList(), emptyMap())
+            }
+        }
+
+        private fun parseItemsArray(array: JSONArray?): List<ProfileItemEntity> {
+            if (array == null) return emptyList()
+            return (0 until array.length()).map { i ->
+                val obj = array.getJSONObject(i)
+                ProfileItemEntity(
+                    type = obj.getString("type"),
+                    label = obj.getString("label"),
+                    value = obj.getString("value"),
+                    size = obj.optString("size", "half"),
+                    sortOrder = obj.optInt("sortOrder", i)
+                )
             }
         }
     }
