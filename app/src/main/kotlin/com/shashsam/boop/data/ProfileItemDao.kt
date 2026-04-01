@@ -23,6 +23,9 @@ interface ProfileItemDao {
     @Query("SELECT * FROM profile_items ORDER BY sortOrder ASC")
     suspend fun getAllOnce(): List<ProfileItemEntity>
 
+    @Query("DELETE FROM profile_items")
+    suspend fun deleteAll()
+
     @Query("SELECT COUNT(*) FROM profile_items")
     suspend fun getCount(): Int
 

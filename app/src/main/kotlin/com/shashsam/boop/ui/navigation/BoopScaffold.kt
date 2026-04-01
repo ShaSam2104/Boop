@@ -54,6 +54,7 @@ import com.shashsam.boop.ui.theme.BoopBottomNavBar
 import com.shashsam.boop.ui.theme.BoopShapeMedium
 import com.shashsam.boop.ui.theme.LocalBoopTokens
 import com.shashsam.boop.ui.theme.NeoBrutalistButton
+import com.shashsam.boop.ui.viewmodels.BackupUiState
 import com.shashsam.boop.ui.viewmodels.SettingsUiState
 import com.shashsam.boop.ui.viewmodels.TransferUiState
 import com.shashsam.boop.utils.LocalHapticsEnabled
@@ -71,6 +72,7 @@ private const val KEY_ANTENNA_GUIDE_SEEN = "nfc_antenna_guide_seen"
 fun BoopScaffold(
     transferUiState: TransferUiState,
     settingsState: SettingsUiState,
+    backupState: BackupUiState,
     friends: List<FriendEntity>,
     profileItems: List<ProfileItemEntity>,
     profilePicPath: String?,
@@ -94,10 +96,12 @@ fun BoopScaffold(
     onDismissReceivedProfile: () -> Unit,
     onNotificationsToggle: (Boolean) -> Unit,
     onVibrationToggle: (Boolean) -> Unit,
-    onSoundToggle: (Boolean) -> Unit,
     onDisplayNameChange: (String) -> Unit,
     onDarkModeToggle: (Boolean) -> Unit,
     onReceivePermissionChange: (String) -> Unit,
+    onExportData: (android.net.Uri, String) -> Unit,
+    onImportData: (android.net.Uri, String) -> Unit,
+    onDismissBackupMessage: () -> Unit,
     onProfilePicPick: (android.net.Uri) -> Unit,
     onAddProfileItem: (String, String, String, String) -> Unit,
     onEditProfileItem: (ProfileItemEntity) -> Unit,
@@ -190,6 +194,7 @@ fun BoopScaffold(
             navController = navController,
             transferUiState = transferUiState,
             settingsState = settingsState,
+            backupState = backupState,
             friends = friends,
             profileItems = profileItems,
             profilePicPath = profilePicPath,
@@ -200,10 +205,12 @@ fun BoopScaffold(
             onResendBoop = onResendBoop,
             onNotificationsToggle = onNotificationsToggle,
             onVibrationToggle = onVibrationToggle,
-            onSoundToggle = onSoundToggle,
             onDisplayNameChange = onDisplayNameChange,
             onDarkModeToggle = onDarkModeToggle,
             onReceivePermissionChange = onReceivePermissionChange,
+            onExportData = onExportData,
+            onImportData = onImportData,
+            onDismissBackupMessage = onDismissBackupMessage,
             onProfilePicPick = onProfilePicPick,
             onAddProfileItem = onAddProfileItem,
             onEditProfileItem = onEditProfileItem,

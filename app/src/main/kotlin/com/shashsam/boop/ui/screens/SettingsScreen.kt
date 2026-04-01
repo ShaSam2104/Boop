@@ -3,6 +3,8 @@ package com.shashsam.boop.ui.screens
 import android.content.Intent
 import android.net.Uri
 import android.util.Log
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -23,18 +25,22 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.DarkMode
+import androidx.compose.material.icons.filled.FileDownload
+import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Vibration
-import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Switch
@@ -53,6 +59,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.shashsam.boop.ui.theme.BoopAccentYellow
@@ -64,27 +71,33 @@ import com.shashsam.boop.ui.theme.GlassCard
 import com.shashsam.boop.ui.theme.LocalBoopTokens
 import com.shashsam.boop.ui.theme.NeoBrutalistButton
 import com.shashsam.boop.ui.theme.WarningAmber
+import com.shashsam.boop.ui.viewmodels.BackupUiState
 import com.shashsam.boop.ui.viewmodels.SettingsUiState
 import com.shashsam.boop.utils.rememberBoopHaptics
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
 
 private const val TAG = "SettingsScreen"
 
 /**
  * Settings screen with dark neo-brutalist styling.
  *
- * Displays toggle rows for Notifications, Vibration, and Sound,
+ * Displays toggle rows for Notifications and Vibration,
  * an editable Identity row, receive permission selector,
  * an About section, and a permissions warning card.
  */
 @Composable
 fun SettingsScreen(
     settingsState: SettingsUiState,
+    backupState: BackupUiState,
     onBackClick: () -> Unit,
     onNotificationsToggle: (Boolean) -> Unit,
     onVibrationToggle: (Boolean) -> Unit,
-    onSoundToggle: (Boolean) -> Unit,
     onDarkModeToggle: (Boolean) -> Unit,
     onReceivePermissionChange: (String) -> Unit,
+    onExportData: (Uri, String) -> Unit,
+    onImportData: (Uri, String) -> Unit,
+    onDismissBackupMessage: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Log.d(TAG, "SettingsScreen recompose — state=$settingsState")
@@ -93,6 +106,32 @@ fun SettingsScreen(
     val haptics = rememberBoopHaptics()
     val context = LocalContext.current
     var showPermissionDialog by remember { mutableStateOf(false) }
+
+    // ── Backup state ─────────────────────────────────────────────────────
+    var showExportPasswordDialog by remember { mutableStateOf(false) }
+    var showImportPasswordDialog by remember { mutableStateOf(false) }
+    var pendingExportPassword by remember { mutableStateOf("") }
+    var pendingUri by remember { mutableStateOf<Uri?>(null) }
+    val isBusy = backupState.isExporting || backupState.isImporting
+
+    val exportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/octet-stream")
+    ) { uri ->
+        if (uri != null) {
+            Log.d(TAG, "Export SAF uri received")
+            onExportData(uri, pendingExportPassword)
+            pendingExportPassword = ""
+        }
+    }
+
+    val importLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            pendingUri = uri
+            showImportPasswordDialog = true
+        }
+    }
 
     Column(
         modifier = modifier
@@ -229,20 +268,6 @@ fun SettingsScreen(
 
             SettingsDivider()
 
-            // Sound
-            SettingsToggleRow(
-                icon = Icons.Filled.VolumeUp,
-                label = "Sound",
-                checked = settingsState.soundEnabled,
-                onCheckedChange = {
-                    Log.d(TAG, "Sound toggled=$it")
-                    haptics.tick()
-                    onSoundToggle(it)
-                }
-            )
-
-            SettingsDivider()
-
             // Dark Mode
             SettingsToggleRow(
                 icon = Icons.Filled.DarkMode,
@@ -268,6 +293,68 @@ fun SettingsScreen(
                 }
             )
 
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // ── Data section ──────────────────────────────────────────────────
+            Text(
+                text = "Data",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.ExtraBold,
+                color = tokens.textSecondary,
+                modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp)
+            )
+
+            SettingsActionRow(
+                icon = Icons.Filled.FileUpload,
+                label = "Export Data",
+                subtitle = if (backupState.isExporting) "Exporting…" else "Backup profile, friends & history",
+                isLoading = backupState.isExporting,
+                enabled = !isBusy,
+                onClick = {
+                    Log.d(TAG, "Export data clicked")
+                    haptics.tick()
+                    showExportPasswordDialog = true
+                }
+            )
+
+            SettingsDivider()
+
+            SettingsActionRow(
+                icon = Icons.Filled.FileDownload,
+                label = "Import Data",
+                subtitle = if (backupState.isImporting) "Importing…" else "Restore from a backup file",
+                isLoading = backupState.isImporting,
+                enabled = !isBusy,
+                onClick = {
+                    Log.d(TAG, "Import data clicked")
+                    haptics.tick()
+                    importLauncher.launch(arrayOf("application/octet-stream", "*/*"))
+                }
+            )
+
+            // Backup status message
+            backupState.message?.let { message ->
+                Spacer(modifier = Modifier.height(8.dp))
+                GlassCard(modifier = Modifier.fillMaxWidth()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onDismissBackupMessage() }
+                            .padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = message,
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.Bold,
+                            color = if (backupState.isError) MaterialTheme.colorScheme.error else tokens.accent,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+            }
+
             Spacer(modifier = Modifier.height(8.dp))
 
             // ── Warning card ────────────────────────────────────────────────
@@ -275,6 +362,42 @@ fun SettingsScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
         }
+    }
+
+    // ── Export password dialog ───────────────────────────────────────────────
+    if (showExportPasswordDialog) {
+        BackupPasswordDialog(
+            title = "Export Backup",
+            description = "Enter a password to encrypt your backup. You'll need this password to restore it.",
+            actionLabel = "Export",
+            onConfirm = { password ->
+                showExportPasswordDialog = false
+                pendingExportPassword = password
+                val fileName = "boop_backup_${LocalDate.now().format(DateTimeFormatter.ISO_LOCAL_DATE)}.boop"
+                exportLauncher.launch(fileName)
+            },
+            onDismiss = { showExportPasswordDialog = false }
+        )
+    }
+
+    // ── Import password dialog ──────────────────────────────────────────────
+    if (showImportPasswordDialog) {
+        BackupPasswordDialog(
+            title = "Import Backup",
+            description = "Enter the password used when this backup was created.",
+            actionLabel = "Import",
+            onConfirm = { password ->
+                showImportPasswordDialog = false
+                pendingUri?.let { uri ->
+                    onImportData(uri, password)
+                    pendingUri = null
+                }
+            },
+            onDismiss = {
+                showImportPasswordDialog = false
+                pendingUri = null
+            }
+        )
     }
 
     // ── Receive permission dialog ───────────────────────────────────────────
@@ -400,6 +523,130 @@ private fun SettingsDivider(modifier: Modifier = Modifier) {
             .padding(horizontal = 16.dp),
         thickness = 0.5.dp,
         color = MaterialTheme.colorScheme.onBackground
+    )
+}
+
+// ─── Settings Action Row ─────────────────────────────────────────────────
+
+@Composable
+private fun SettingsActionRow(
+    icon: ImageVector,
+    label: String,
+    subtitle: String,
+    isLoading: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val tokens = LocalBoopTokens.current
+    GlassCard(modifier = modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(enabled = enabled, onClick = onClick)
+                .alpha(if (enabled) 1f else 0.5f)
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = tokens.accent,
+                modifier = Modifier.size(24.dp)
+            )
+            Spacer(modifier = Modifier.width(16.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onBackground
+                )
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = tokens.textSecondary
+                )
+            }
+            if (isLoading) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(20.dp),
+                    strokeWidth = 2.dp,
+                    color = tokens.accent
+                )
+            } else {
+                Icon(
+                    imageVector = Icons.Filled.ChevronRight,
+                    contentDescription = null,
+                    tint = tokens.textTertiary,
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+        }
+    }
+}
+
+// ─── Backup Password Dialog ──────────────────────────────────────────────
+
+@Composable
+private fun BackupPasswordDialog(
+    title: String,
+    description: String,
+    actionLabel: String,
+    onConfirm: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var password by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        shape = BoopShapeMedium,
+        containerColor = LocalBoopTokens.current.dialogSurface,
+        title = {
+            Text(
+                text = title,
+                fontWeight = FontWeight.ExtraBold
+            )
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    text = description,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                OutlinedTextField(
+                    value = password,
+                    onValueChange = { password = it },
+                    label = { Text("Password") },
+                    visualTransformation = PasswordVisualTransformation(),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = BoopBrandPurple,
+                        focusedLabelColor = BoopBrandPurple,
+                        cursorColor = BoopBrandPurple
+                    )
+                )
+            }
+        },
+        confirmButton = {
+            NeoBrutalistButton(
+                onClick = { onConfirm(password) },
+                enabled = password.isNotEmpty()
+            ) {
+                Text(actionLabel, fontWeight = FontWeight.ExtraBold)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(
+                    "Cancel",
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
     )
 }
 
@@ -548,15 +795,17 @@ private fun SettingsScreenPreview() {
             settingsState = SettingsUiState(
                 notificationsEnabled = true,
                 vibrationEnabled = false,
-                soundEnabled = true,
                 displayName = "Pixel 8 Pro"
             ),
+            backupState = BackupUiState(),
             onBackClick = {},
             onNotificationsToggle = {},
             onVibrationToggle = {},
-            onSoundToggle = {},
             onDarkModeToggle = {},
-            onReceivePermissionChange = {}
+            onReceivePermissionChange = {},
+            onExportData = { _, _ -> },
+            onImportData = { _, _ -> },
+            onDismissBackupMessage = {}
         )
     }
 }
@@ -567,12 +816,15 @@ private fun SettingsScreenLightPreview() {
     BoopTheme(darkTheme = false) {
         SettingsScreen(
             settingsState = SettingsUiState(),
+            backupState = BackupUiState(),
             onBackClick = {},
             onNotificationsToggle = {},
             onVibrationToggle = {},
-            onSoundToggle = {},
             onDarkModeToggle = {},
-            onReceivePermissionChange = {}
+            onReceivePermissionChange = {},
+            onExportData = { _, _ -> },
+            onImportData = { _, _ -> },
+            onDismissBackupMessage = {}
         )
     }
 }

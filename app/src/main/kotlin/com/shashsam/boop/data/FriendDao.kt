@@ -15,6 +15,9 @@ interface FriendDao {
     @Query("SELECT * FROM friends ORDER BY lastInteractionTimestamp DESC")
     fun getAll(): Flow<List<FriendEntity>>
 
+    @Query("SELECT * FROM friends ORDER BY lastInteractionTimestamp DESC")
+    suspend fun getAllOnce(): List<FriendEntity>
+
     @Query("SELECT * FROM friends WHERE ssid = :ssid LIMIT 1")
     suspend fun getBySsid(ssid: String): FriendEntity?
 

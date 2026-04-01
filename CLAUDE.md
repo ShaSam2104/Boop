@@ -48,7 +48,7 @@ Routes are defined in `BoopRoute` sealed class: Home, History, Profile, Transfer
 
 **HomeScreen header icons**: Chai heart button (UPI), Info button (NFC guide). No settings icon on Home — settings accessible only via Profile.
 
-**Settings is a separate route**: Accessible from both HomeScreen gear icon and ProfileScreen settings row. ProfileScreen is profile-only (identity card + settings button + friends list). SettingsScreen has About section at the top (before toggles), followed by toggle rows, identity, receive permission, and permissions warning.
+**Settings is a separate route**: Accessible from both HomeScreen gear icon and ProfileScreen settings row. ProfileScreen is profile-only (identity card + settings button + friends list). SettingsScreen has About section at the top (before toggles), followed by toggle rows, receive permission, Data section (Export/Import), and permissions warning.
 
 ### Transfer Flow
 
@@ -81,23 +81,27 @@ Routes are defined in `BoopRoute` sealed class: Home, History, Profile, Transfer
 | `wifi/WifiDirectManager` | Coroutine-friendly wrapper around `WifiP2pManager`; exposes `StateFlow<WifiDirectState>` |
 | `transfer/TransferManager` | Singleton with `sendFile()` / `receiveFile()` + `sendFiles()` / `receiveFiles()` (multi-file) + `sendFilesWithFriendExchange()` / `receiveFilesWithFriendExchange()` (friend exchange after file transfer) + `sendProfile()` / `receiveProfile()` (NFC profile sharing); returns `Flow<TransferProgress>` (includes `fileName`, `mimeType`, `fileIndex`, `totalFiles`, `friendRequest`, `friendProfile` on completion). Receiver-side TCP uses `connectWithRetry()` (5 attempts, 500ms apart) for reliability |
 | `transfer/FriendExchange` | Wire format helpers for bidirectional friend/profile exchange: `ProfileData` (ulid + displayName + profileItemsJson + profilePicBytes), magic-delimited request/response protocol (BOOP_FRIEND/BOOP_FRIEND_ACK/BOOP_FRIEND_NAK) |
+| `backup/BackupCrypto` | AES-256-GCM encryption/decryption with PBKDF2WithHmacSHA256 key derivation. Wire format: `[4B magic "BOOP"][1B version=0x01][16B salt][12B IV][ciphertext+tag]`. Throws `BadMagicException`, `UnsupportedVersionException`, or `AEADBadTagException` (wrong password) |
+| `backup/BackupSerializer` | JSON serialization/deserialization for backup data (`BackupData`, `ProfileBackup`, `FriendBackup`, `HistoryBackup`). Uses `java.util.Base64` for JVM test compat. Version check on deserialize |
+| `backup/BackupManager` | Orchestrates full export/import: reads Room tables + profile/friend pic files → serializes → encrypts → writes to SAF URI. Import: decrypts → deserializes → profile items clear+replace, friends upsert by ULID, history append, SharedPreferences overwrite, pic files overwrite. Room writes wrapped in `runInTransaction` |
 | `data/BoopDatabase` | Room database singleton (`boop_database`), holds `TransferHistoryEntity` |
-| `data/TransferHistoryDao` | Room DAO: `insert()`, `getAll()` (as Flow), `deleteOlderThan()` |
+| `data/TransferHistoryDao` | Room DAO: `insert()`, `getAll()` (as Flow), `getAllOnce()` (suspend), `deleteOlderThan()` |
 | `data/TransferHistoryEntity` | Room entity for persisted transfer history records |
 | `data/FriendEntity` | Room entity for friends list — ULID (unique indexed, persistent identity), SSID (unique indexed, current session), displayName, timestamps (firstSeen, lastSeen, lastInteraction), transferCount, profileJson, profilePicPath |
-| `data/FriendDao` | Room DAO for friends: insert (IGNORE on conflict), getByUlid, getBySsid, getById, updateLastSeen, updateProfile, deleteById, upsertByUlid (primary dedup by ULID) |
+| `data/FriendDao` | Room DAO for friends: insert (IGNORE on conflict), getByUlid, getBySsid, getById, getAllOnce (suspend), updateLastSeen, updateProfile, deleteById, upsertByUlid (primary dedup by ULID) |
 | `data/ProfileItemEntity` | Room entity for user's profile bento items — type (link/email/phone), label, value, size (half/full), sortOrder |
-| `data/ProfileItemDao` | Room DAO for profile items: insert, update, deleteById, getAll (Flow), getAllOnce (suspend), getCount, updateSortOrder |
+| `data/ProfileItemDao` | Room DAO for profile items: insert, update, deleteById, deleteAll, getAll (Flow), getAllOnce (suspend), getCount, updateSortOrder |
 | `ui/viewmodels/TransferViewModel` | Owns full transfer pipeline; produces `TransferUiState`; defaults to receive mode; `resetToReceive()` re-arms NFC after transfer with `isResetting` guard; observes Room for history; all sends use `sendFilesWithFriendExchange` (always ready for friend exchange); sender auto-resets after flow completion (friend exchange done/timed out); hotspot warning management; sender file URI persisted in history; opt-in friend add via `approveIncomingTransfer(becomeFriends)` + friend exchange protocol; approval gate with 3 options (`pendingApproval`, Accept/Accept+Befriend/Reject); profile sharing (`prepareProfileShare(profileData)` — single merged call: cleanup→createGroup→waitGroupCreated→TCP server, `proceedWithProfileReceive()`); friend request handling (`acceptFriendRequest()`, `rejectFriendRequest()`); friend selection (`selectFriend()`, `removeFriend()`); `buildLocalProfile()` reads profile items from DB directly; exposes `friends`, `selectedFriend` StateFlows |
 | `ui/viewmodels/ProfileViewModel` | AndroidViewModel for user's local profile: `profileItems` from Room, `profilePicPath` from SharedPreferences, add/update/delete/reorder items (max 6), profile pic copy to filesDir, `buildProfileJson()` for wire transfer, `parseProfileJson()` companion for friend profile parsing |
-| `ui/viewmodels/SettingsViewModel` | SharedPreferences-backed settings (notifications, vibration, sound, display name, dark mode, receive permission) |
+| `ui/viewmodels/SettingsViewModel` | SharedPreferences-backed settings (notifications, vibration, display name, dark mode, receive permission) |
+| `ui/viewmodels/BackupViewModel` | `AndroidViewModel` with `BackupUiState`, manages `BackupManager` for encrypted export/import; exposes `exportData(uri, password)` / `importData(uri, password)` / `dismissMessage()`; catches `AEADBadTagException` (wrong password), `BadMagicException`, `UnsupportedVersionException` |
 | `ui/navigation/BoopScaffold` | Top-level scaffold with bottom nav, overlays (3-button approval sheet with drag handle: Accept/Accept+Befriend/Reject, friend request dialog with PersonAdd icon, profile received dialog, error dialog "Something went wrong", NFC/Wi-Fi/Hotspot warning dialogs with contextual icons and accent-colored action buttons). All dialogs use `BoopShapeMedium`. Auto-navigation with 1s post-transfer delay + reset to receive |
 | `ui/navigation/BoopNavHost` | NavHost mapping routes to screen composables |
 | `ui/navigation/BoopNavigation` | Route definitions (`BoopRoute` sealed class) |
 | `ui/screens/HomeScreen` | Header with NFC icon + chai button, "Ready to Boop?" display, morphing aurora blob CTA (8-point Bezier + sweep gradient), recent boops with "View All" navigation. "Boop it" always opens multi-file picker — no explicit mode toggle |
 | `ui/screens/TransferProgressScreen` | Full-screen transfer progress with percentage, rotating dashed ring animation during transfer, checkmark icon on completion, progress bar, yellow file card, "File X of Y" counter (multi-file), cancel button |
 | `ui/screens/NfcGuideScreen` | Full-screen NFC antenna guide dialog with phone visualization and "Got it" dismiss |
-| `ui/screens/SettingsScreen` | Standalone settings page: About section (top), toggle rows (notifications, vibration, sound, dark mode), receive permission, permissions warning. Identity editing moved to ProfileScreen. Back button navigates back |
+| `ui/screens/SettingsScreen` | Standalone settings page: About section (top), toggle rows (notifications, vibration, dark mode), receive permission, Data section (Export/Import with password dialogs and SAF launchers), permissions warning. Identity editing moved to ProfileScreen. Back button navigates back |
 | `utils/SocialIcons` | `resolveSocialIcon(type, value)` — maps domain/type to Material ImageVector or drawable resource ID. Supports GitHub, Twitter/X, Instagram, LinkedIn, YouTube, Facebook, email, phone, fallback globe |
 | `ui/screens/HistoryScreen` | Transfer history (last 30 days) with direction + file-type filter chips, tap to open file, share button to re-send via Boop |
 | `ui/screens/ProfileScreen` | Rich profile page: circular profile pic (Coil AsyncImage, tap to change via photo picker), display name (tap to edit), Share Profile via NFC button, bento grid section (Links — add/edit/delete items, max 6), friends list with clickable cards. Settings gear icon in header. LazyColumn layout |
@@ -155,6 +159,7 @@ Routes are defined in `BoopRoute` sealed class: Home, History, Profile, Transfer
 - **Multi-file transfer** — `ConnectionDetails.fileCount` and `BoopHceService.connectionFileCount` coordinate multi-file awareness. Wire format prepends a `fileCount` Int32 header. `TransferManager.sendFiles()`/`receiveFiles()` handle sequential files. `TransferProgress` includes `fileIndex`/`totalFiles`
 - **Share sheet integration** — `AndroidManifest.xml` declares `ACTION_SEND` + `ACTION_SEND_MULTIPLE` intent filters. `MainActivity.handleShareIntent()` processes incoming URIs in both `onCreate` and `onNewIntent`
 - **Room schema export** — `exportSchema = false` on `BoopDatabase`; no schema JSON files generated
+- **Encrypted backup** — `BackupCrypto` uses AES-256-GCM with PBKDF2 key derivation (120k iterations). Wire format: `BOOP` magic + version byte + salt + IV + ciphertext. `BackupSerializer` uses `java.util.Base64` (not `android.util.Base64`) for JVM test compatibility. Import behavior: profile items clear+replace, friends upsert by ULID (SSID gets `IMPORTED_{ulid}` placeholder), history append. Imported friends get real SSID on next NFC encounter via `upsertByUlid`. `BackupManager` wraps Room writes in `runInTransaction`. Export flow: password dialog → SAF `CreateDocument` picker → encrypt and write. Import flow: SAF `OpenDocument` picker → password dialog → decrypt and restore
 - **TCP stream consistency** — `streamBytes()` must use the SAME wrapped stream (`DataOutputStream`/`DataInputStream`) as `writeHeader()`/`readHeader()`. Using a fresh `socket.getOutputStream()`/`socket.getInputStream()` bypasses the buffer, causing data corruption. `streamBytes()` also reads exactly `totalSize` bytes (not until EOF) so multi-file transfers don't read past file boundaries
 - **Transfer speed** — `CHUNK_SIZE = 256 KB`, buffered streams sized to `CHUNK_SIZE`, socket buffers = 512 KB, `tcpNoDelay = true`. Progress callback throttled to percentage changes (max 101 per file)
 - **EADDRINUSE on cancel + re-send** — `TransferManager.createServerSocket()` uses `SO_REUSEADDR`. `activeServerSocket` tracks the live server socket. `TransferManager.cleanup()` force-closes it. Called from `TransferViewModel` before `startSending()`/`startSendingMultiple()`, `prepareProfileShare()`, and in `reset()`/`resetToReceive()`. `prepareProfileShare()` also calls `wifiDirectManager.reset()` before `createGroup()` to clean up stale Wi-Fi Direct groups
@@ -185,6 +190,8 @@ JVM unit tests live in `app/src/test/kotlin/com/shashsam/boop/`. Run with `./gra
 | `ui/viewmodels/TransferReliabilityTest` | Error recovery (reset after error, NFC re-arm), successive transfer cleanup (recentTransfers preserved, pending state cleared), guard states (isResetting, isSendMode, duplicate NFC), ghost screen prevention (state survives cleanup, full reset only after nav), TransferProgress edge cases (zero bytes, clamping, multi-file), profile refresh data round-trip, ConnectionDetails defaults, ULID on ConnectionDetails and ProfileData (32 tests) |
 | `utils/FormattedSizeTest` | B/KB/MB/GB boundaries and values (8 tests) |
 | `ui/navigation/BoopRouteTest` | Route strings, uniqueness across all 7 routes, FriendProfile route + createRoute (9 tests) |
+| `backup/BackupCryptoTest` | Encrypt/decrypt round-trip, magic/version header, wrong password (AEADBadTagException), bad magic, future version, empty/large payloads (10 tests) |
+| `backup/BackupSerializerTest` | Serialize/deserialize round-trip (profile, friends, history), Base64 round-trip, empty data, null fields, future version, full crypto+serialization integration (8 tests) |
 | `ui/viewmodels/SettingsUiStateTest` | Defaults, toggle copies, display name, dark mode, equality (7 tests) |
 | `ui/models/RecentBoopTest` | Constructor fields, copy, equality, wasSender flag (5 tests) |
 | `ui/models/LogEntryTest` | Default isError, error flag, equality (3 tests) |
@@ -208,7 +215,9 @@ JVM unit tests live in `app/src/test/kotlin/com/shashsam/boop/`. Run with `./gra
 | TCP transfer port | `8765` |
 | TCP chunk size | `256 KB` |
 | Socket buffer size | `512 KB` |
-| Settings SharedPrefs | `boop_settings` (keys: notifications_enabled, vibration_enabled, sound_enabled, display_name, dark_mode_enabled, receive_permission, user_ulid) |
+| Settings SharedPrefs | `boop_settings` (keys: notifications_enabled, vibration_enabled, display_name, dark_mode_enabled, receive_permission, user_ulid) |
+| Backup file magic | `BOOP` (4 bytes), version `0x01`, AES-256-GCM with 120k PBKDF2 iterations, 16B salt, 12B IV |
+| Backup file extension | `.boop` (MIME: `application/octet-stream`) |
 | UPI Payee | `03.shubhamshah-1@oksbi` |
 | Room DB version | 5 (migration 1→2 adds `friends` table, migration 2→3 adds `profile_items` table + `profileJson`/`profilePicPath` columns to friends + SSID unique index, migration 3→4 adds `ulid` + `lastInteractionTimestamp` columns to friends + ULID unique index, migration 4→5 adds `peerUlid` to `transfer_history`) |
 | Profile pic SharedPrefs | `boop_settings` / `profile_pic_path` |

@@ -22,6 +22,7 @@ import com.shashsam.boop.nfc.NfcReader
 import com.shashsam.boop.nfc.NfcReaderState
 import com.shashsam.boop.ui.navigation.BoopScaffold
 import com.shashsam.boop.ui.theme.BoopTheme
+import com.shashsam.boop.ui.viewmodels.BackupViewModel
 import com.shashsam.boop.ui.viewmodels.ProfileViewModel
 import com.shashsam.boop.ui.viewmodels.SettingsViewModel
 import com.shashsam.boop.ui.viewmodels.TransferViewModel
@@ -37,6 +38,7 @@ class MainActivity : ComponentActivity() {
     private val viewModel: TransferViewModel by viewModels()
     private val settingsViewModel: SettingsViewModel by viewModels()
     private val profileViewModel: ProfileViewModel by viewModels()
+    private val backupViewModel: BackupViewModel by viewModels()
 
     /** Wraps the NFC adapter for reader mode and foreground dispatch. */
     private lateinit var nfcReader: NfcReader
@@ -88,6 +90,7 @@ class MainActivity : ComponentActivity() {
                     color = MaterialTheme.colorScheme.background
                 ) {
                     val uiState by viewModel.uiState.collectAsState()
+                    val backupState by backupViewModel.uiState.collectAsState()
                     val friends by viewModel.friends.collectAsState()
                     val profileItems by profileViewModel.profileItems.collectAsState()
                     val profilePicPath by profileViewModel.profilePicPath.collectAsState()
@@ -166,6 +169,7 @@ class MainActivity : ComponentActivity() {
                     BoopScaffold(
                         transferUiState = uiState,
                         settingsState = settingsState,
+                        backupState = backupState,
                         friends = friends,
                         profileItems = profileItems,
                         profilePicPath = profilePicPath,
@@ -242,10 +246,18 @@ class MainActivity : ComponentActivity() {
                         },
                         onNotificationsToggle = settingsViewModel::setNotificationsEnabled,
                         onVibrationToggle = settingsViewModel::setVibrationEnabled,
-                        onSoundToggle = settingsViewModel::setSoundEnabled,
                         onDisplayNameChange = settingsViewModel::setDisplayName,
                         onDarkModeToggle = settingsViewModel::setDarkMode,
                         onReceivePermissionChange = settingsViewModel::setReceivePermission,
+                        onExportData = { uri, password ->
+                            backupViewModel.exportData(uri, password)
+                        },
+                        onImportData = { uri, password ->
+                            backupViewModel.importData(uri, password)
+                        },
+                        onDismissBackupMessage = {
+                            backupViewModel.dismissMessage()
+                        },
                         onProfilePicPick = { uri ->
                             profileViewModel.setProfilePic(uri)
                         },

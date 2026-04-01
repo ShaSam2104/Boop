@@ -1,4 +1,4 @@
-# Boop 📲
+# Boop
 
 > **"Just boop that file"** — AirDrop-style P2P file sharing for Android.
 
@@ -22,29 +22,47 @@ Boop lets two Android devices share files by simply tapping them together. An NF
 ```
 Sender Device                          Receiver Device
 ┌─────────────────────────┐            ┌─────────────────────────┐
-│  User picks a file      │            │  App in NFC reader mode │
-│  (MediaStore picker)    │            │                         │
+│  User picks files       │            │  App in NFC reader mode │
+│  (multi-file picker)    │            │                         │
 │          │              │            │          │              │
 │  BoopHceService (HCE)   │◄── NFC ───►│  NFC foreground dispatch│
-│  sends NDEF payload:    │    tap     │  receives Wi-Fi Direct  │
-│  • Wi-Fi Direct MAC     │            │  MAC + port             │
+│  sends NDEF payload:    │    tap     │  receives connection    │
+│  • SSID + passphrase    │            │  details + sender ULID  │
 │  • TCP port             │            │          │              │
-│  • AAR (app install)    │            │  WifiP2pManager.connect │
-│          │              │            │          │              │
+│  • file count + ULID    │            │  Permission check:      │
+│          │              │            │  auto-accept / prompt   │
 │  WifiP2pManager (GO)    │◄─ Wi-Fi ──►│  WifiP2pManager (peer) │
 │  TCP Server Socket      │  Direct    │  TCP Client Socket      │
 │  streams file bytes     │            │  writes to MediaStore   │
+│          │              │            │          │              │
+│  Friend exchange        │◄── TCP ───►│  Friend exchange        │
+│  (optional, post-xfer)  │            │  (optional, post-xfer)  │
 └─────────────────────────┘            └─────────────────────────┘
 ```
 
 ### Flow Summary
 
-1. **Sender** picks a file (via file picker or Android share sheet) and activates HCE via `BoopHceService`. The NDEF message carries the Wi-Fi Direct group SSID, passphrase, MAC, and TCP port as JSON.
-2. **Receiver** reads the NFC payload via reader mode or foreground dispatch and extracts the connection parameters.
-3. **Receiver** joins the Sender's Wi-Fi Direct group using SSID + passphrase via `WifiP2pConfig.Builder` (API 29+). The Sender acts as Group Owner (GO).
-4. A **TCP socket** stream carries the raw file bytes from Sender → Receiver in 16 KB chunks with progress reporting.
-5. The Receiver writes the incoming bytes to **MediaStore** (scoped storage) in the Downloads folder.
-6. If the Receiver does not have Boop installed, the **Android Application Record (AAR)** in the NDEF message redirects them to the Play Store.
+1. **Sender** picks files (via multi-file picker or Android share sheet) and activates HCE. The NDEF payload carries the Wi-Fi Direct group SSID, passphrase, TCP port, file count, display name, and sender's persistent ULID as JSON.
+2. **Receiver** reads the NFC payload via reader mode or foreground dispatch and checks receive permission: auto-accepts known friends (by ULID), otherwise shows a 3-button approval sheet (Accept / Accept + Become Friends / Reject).
+3. **Receiver** joins the Sender's Wi-Fi Direct group via SSID + passphrase using `WifiP2pConfig.Builder` (API 29+). Sender is Group Owner.
+4. A **TCP socket** stream carries raw file bytes from Sender to Receiver in 256 KB chunks with per-file progress. Multi-file transfers prepend a file count header.
+5. The Receiver writes incoming bytes to **MediaStore** (scoped storage) in the Downloads folder.
+6. **Friend exchange** (optional): after file transfer, the receiver can initiate a bidirectional profile exchange over the same TCP socket, sharing ULIDs, display names, profile items, and profile pictures.
+
+---
+
+## Features
+
+- **NFC-brokered connection** — Sender broadcasts Wi-Fi Direct credentials via HCE (dual AID: proprietary + NDEF Type 4 Tag for cold-start); Receiver reads via NFC reader mode or foreground dispatch
+- **Multi-file transfer** — pick and send multiple files at once with per-file progress tracking
+- **Android share sheet** — share any file from any app directly to Boop via `ACTION_SEND` / `ACTION_SEND_MULTIPLE`
+- **Friends system** — opt-in friend list with ULID-based identity. Auto-accept transfers from friends, auto-refresh profiles on each encounter
+- **Profile & bento grid** — customizable profile with display name, profile picture, and a bento grid of links, emails, and phone numbers (up to 12 items). Share profiles via NFC tap
+- **Transfer history** — persistent history (Room database) with direction and file-type filters, tap to open, share button to re-send
+- **Encrypted backup** — export/import profile, friends, and history as a password-protected `.boop` file (AES-256-GCM with PBKDF2 key derivation)
+- **Dark/light theme** — neo-brutalist design system with brand purple (#736DEE) and accent yellow (#F8FFA3). Plus Jakarta Sans typography
+- **NFC antenna guide** — Canvas visualization of the phone's NFC sweet spot using `getNfcAntennaInfo()` (API 34+) with fallback
+- **Scoped storage** — all file I/O through MediaStore API; received files saved to Downloads
 
 ---
 
@@ -54,27 +72,21 @@ Sender Device                          Receiver Device
 |---|---|
 | Language | Kotlin 2.0 |
 | UI | Jetpack Compose + Material Design 3 |
+| Navigation | Jetpack Navigation Compose 2.7.7 |
 | Async | Kotlin Coroutines & Flows |
+| Persistence | Room 2.6.1 + KSP 2.0.0 |
+| Image loading | Coil 2.6.0 |
 | NFC (Sender) | Host-Based Card Emulation (HCE) — `HostApduService` |
 | NFC (Receiver) | NFC reader mode + foreground dispatch |
 | P2P Connection | Wi-Fi Direct — `WifiP2pManager` + `WifiP2pConfig.Builder` |
-| File Transfer | TCP/IP sockets (byte streams) |
+| File Transfer | TCP/IP sockets (256 KB chunks, 512 KB buffers) |
+| Backup Crypto | AES-256-GCM, PBKDF2WithHmacSHA256 (javax.crypto) |
 | Storage | Android MediaStore API (scoped storage) |
 | Min SDK | 26 (Android 8.0 Oreo) |
 | Target SDK | 34 (Android 14) |
-| Build | Gradle 8.6, AGP 8.3.2 |
+| Build | Gradle 8.6, AGP 8.3.2, version catalog |
 
 ---
-
-## Features
-
-- **NFC-brokered connection** — Sender broadcasts Wi-Fi Direct credentials via HCE; Receiver reads via NFC reader mode or foreground dispatch
-- **Wi-Fi Direct file transfer** — high-speed P2P transfer over TCP sockets with 16 KB chunking and real-time progress
-- **Android share sheet integration** — share any file from any app (Contacts, Gallery, Files, etc.) directly to Boop via `ACTION_SEND`
-- **NFC antenna location guide** — Canvas visualization of the phone's NFC sweet spot using `getNfcAntennaInfo()` (API 34+) with fallback; auto-shows on first share, manually toggleable after
-- **Connection timeout & error handling** — 10s Wi-Fi Direct timeout with `CircularProgressIndicator`, green checkmark on connect, M3 `AlertDialog` for errors
-- **Transfer progress** — `LinearProgressIndicator` with bytes transferred display
-- **Scoped storage** — all file I/O through MediaStore API; received files saved to Downloads
 
 ## Project Structure
 
@@ -82,31 +94,67 @@ Sender Device                          Receiver Device
 app/src/main/
 ├── AndroidManifest.xml
 ├── kotlin/com/shashsam/boop/
-│   ├── MainActivity.kt              # Entry point, NFC dispatch, share intent handler
+│   ├── MainActivity.kt                # Entry point, NFC dispatch, share intent handler
+│   ├── backup/
+│   │   ├── BackupCrypto.kt            # AES-256-GCM encrypt/decrypt with PBKDF2
+│   │   ├── BackupSerializer.kt        # JSON serialization for backup data
+│   │   └── BackupManager.kt           # Orchestrates full export/import (Room + files)
+│   ├── data/
+│   │   ├── BoopDatabase.kt            # Room database singleton (v5, 4 migrations)
+│   │   ├── TransferHistoryDao.kt      # DAO for transfer history
+│   │   ├── TransferHistoryEntity.kt   # History entity (fileName, size, mime, peer ULID)
+│   │   ├── FriendDao.kt               # DAO for friends (upsert by ULID)
+│   │   ├── FriendEntity.kt            # Friend entity (ULID, profile, timestamps)
+│   │   ├── ProfileItemDao.kt          # DAO for profile bento items
+│   │   └── ProfileItemEntity.kt       # Profile item entity (type, label, value, size)
 │   ├── nfc/
-│   │   ├── BoopHceService.kt        # HCE service — NDEF payload with SSID/token/MAC/port
-│   │   └── NfcReader.kt             # NFC reader mode + foreground dispatch → ConnectionDetails
+│   │   ├── BoopHceService.kt          # Dual-AID HCE (proprietary + NDEF Type 4 Tag)
+│   │   └── NfcReader.kt               # NFC reader mode + foreground dispatch
 │   ├── transfer/
-│   │   └── TransferManager.kt       # TCP send/receive with channelFlow progress emission
+│   │   ├── TransferManager.kt         # TCP send/receive with channelFlow progress
+│   │   └── FriendExchange.kt          # Wire format for bidirectional friend exchange
 │   ├── wifi/
-│   │   └── WifiDirectManager.kt     # Wi-Fi Direct state machine, SSID+passphrase connect
+│   │   └── WifiDirectManager.kt       # Wi-Fi Direct state machine
 │   ├── ui/
 │   │   ├── components/
-│   │   │   └── NfcAntennaGuide.kt   # Canvas NFC antenna visualization with pulsing ripple
+│   │   │   ├── BentoGrid.kt           # 4-column profile grid (half/full items)
+│   │   │   ├── ProfileItemDialog.kt   # Add/edit profile item dialog
+│   │   │   └── NfcAntennaGuide.kt     # Canvas NFC antenna visualization
+│   │   ├── models/
+│   │   │   ├── LogEntry.kt            # Activity log entry
+│   │   │   └── RecentBoop.kt          # Recent transfer record
+│   │   ├── navigation/
+│   │   │   ├── BoopScaffold.kt        # Top-level scaffold, overlays, auto-navigation
+│   │   │   ├── BoopNavHost.kt         # Route → screen mapping
+│   │   │   └── BoopNavigation.kt      # Route definitions (BoopRoute sealed class)
 │   │   ├── screens/
-│   │   │   └── HomeScreen.kt        # Full home UI — status, FABs, progress, log, dialogs
+│   │   │   ├── HomeScreen.kt          # Aurora blob CTA, recent boops
+│   │   │   ├── HistoryScreen.kt       # Filtered transfer history
+│   │   │   ├── ProfileScreen.kt       # Profile card, bento grid, friends list
+│   │   │   ├── SettingsScreen.kt      # Toggles, receive permission, export/import
+│   │   │   ├── TransferProgressScreen.kt # Transfer progress with rotating ring
+│   │   │   ├── FriendProfileScreen.kt # Read-only friend profile view
+│   │   │   └── NfcGuideScreen.kt      # NFC antenna guide dialog
 │   │   ├── viewmodels/
-│   │   │   └── TransferViewModel.kt # Central orchestrator — NFC → Wi-Fi Direct → TCP
+│   │   │   ├── TransferViewModel.kt   # Central orchestrator
+│   │   │   ├── ProfileViewModel.kt    # Profile items + profile pic
+│   │   │   ├── SettingsViewModel.kt   # SharedPreferences-backed settings
+│   │   │   └── BackupViewModel.kt     # Export/import state management
 │   │   └── theme/
-│   │       ├── Color.kt             # M3 color palette (Purple/Teal/Rose + SuccessGreen)
-│   │       ├── Theme.kt             # BoopTheme (dynamic color on API 31+)
-│   │       └── Type.kt              # Bold typography scale
+│   │       ├── BoopDesignSystem.kt    # Neo-brutalist components + design tokens
+│   │       ├── Color.kt               # Brand colors, surface tones
+│   │       ├── Theme.kt               # BoopTheme, dark/light schemes
+│   │       └── Type.kt                # Plus Jakarta Sans + Space Grotesk
 │   └── utils/
-│       ├── FilePicker.kt            # Compose file picker + metadata resolver
-│       └── PermissionUtils.kt       # Version-aware runtime permission helpers
+│       ├── BoopHaptics.kt             # Haptic feedback utility
+│       ├── FilePicker.kt              # Compose file picker wrappers
+│       ├── PermissionUtils.kt         # Version-aware permission helpers
+│       ├── SocialIcons.kt             # Social platform icon resolver
+│       └── Ulid.kt                    # ULID generator + persistent user ULID
 └── res/
     └── xml/
-        └── apduservice.xml          # HCE AID filter (F0426F6F7001)
+        ├── apduservice.xml            # HCE AID filter
+        └── nfc_tech_filter.xml        # IsoDep tech filter
 ```
 
 ---
@@ -122,6 +170,9 @@ app/src/main/
 
 # Run instrumented tests (requires connected device or emulator)
 ./gradlew connectedAndroidTest
+
+# Install on connected device
+./gradlew installDebug
 ```
 
 > **Note:** `dl.google.com` is required to download Android SDK components. In a sandboxed CI environment this domain must be allowlisted.
@@ -130,4 +181,10 @@ app/src/main/
 
 ## Permissions
 
-All permissions are declared in `AndroidManifest.xml` and requested at runtime by `PermissionUtils.kt`. The app gracefully degrades — UI buttons are disabled and log entries explain what is missing until all permissions are granted.
+All permissions are declared in `AndroidManifest.xml` and requested at runtime by `PermissionUtils.kt`:
+
+- **NFC** — required for connection brokering
+- **NEARBY_WIFI_DEVICES** (API 33+) / **ACCESS_FINE_LOCATION** (API < 33) — required for Wi-Fi Direct
+- **READ/WRITE_EXTERNAL_STORAGE** (API < 29) — scoped storage handles this on newer versions
+
+The app checks NFC, Wi-Fi, and hotspot state on startup and resume, showing warning dialogs with "Open Settings" actions when needed.

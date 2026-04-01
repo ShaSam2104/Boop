@@ -12,7 +12,6 @@ class SettingsUiStateTest {
         val state = SettingsUiState()
         assertTrue("notifications default true", state.notificationsEnabled)
         assertTrue("vibration default true", state.vibrationEnabled)
-        assertTrue("sound default true", state.soundEnabled)
         assertTrue("dark mode default true", state.darkModeEnabled)
     }
 
@@ -28,7 +27,6 @@ class SettingsUiStateTest {
         assertFalse(state.notificationsEnabled)
         // Other fields unchanged
         assertTrue(state.vibrationEnabled)
-        assertTrue(state.soundEnabled)
     }
 
     @Test
@@ -41,12 +39,10 @@ class SettingsUiStateTest {
     fun `all toggles off`() {
         val state = SettingsUiState(
             notificationsEnabled = false,
-            vibrationEnabled = false,
-            soundEnabled = false
+            vibrationEnabled = false
         )
         assertFalse(state.notificationsEnabled)
         assertFalse(state.vibrationEnabled)
-        assertFalse(state.soundEnabled)
     }
 
     @Test

@@ -14,7 +14,6 @@ private const val PREFS_NAME = "boop_settings"
 
 private const val KEY_NOTIFICATIONS = "notifications_enabled"
 private const val KEY_VIBRATION = "vibration_enabled"
-private const val KEY_SOUND = "sound_enabled"
 private const val KEY_DISPLAY_NAME = "display_name"
 private const val KEY_DARK_MODE = "dark_mode_enabled"
 private const val KEY_RECEIVE_PERMISSION = "receive_permission"
@@ -25,7 +24,6 @@ private const val KEY_RECEIVE_PERMISSION = "receive_permission"
 data class SettingsUiState(
     val notificationsEnabled: Boolean = true,
     val vibrationEnabled: Boolean = true,
-    val soundEnabled: Boolean = true,
     val displayName: String = "My Device",
     val darkModeEnabled: Boolean = true,
     val receivePermission: String = "friends"
@@ -46,7 +44,6 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         return SettingsUiState(
             notificationsEnabled = prefs.getBoolean(KEY_NOTIFICATIONS, true),
             vibrationEnabled = prefs.getBoolean(KEY_VIBRATION, true),
-            soundEnabled = prefs.getBoolean(KEY_SOUND, true),
             displayName = prefs.getString(KEY_DISPLAY_NAME, "My Device") ?: "My Device",
             darkModeEnabled = prefs.getBoolean(KEY_DARK_MODE, true),
             receivePermission = prefs.getString(KEY_RECEIVE_PERMISSION, "friends") ?: "friends"
@@ -63,12 +60,6 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         Log.d(TAG, "setVibrationEnabled=$enabled")
         prefs.edit().putBoolean(KEY_VIBRATION, enabled).apply()
         _uiState.update { it.copy(vibrationEnabled = enabled) }
-    }
-
-    fun setSoundEnabled(enabled: Boolean) {
-        Log.d(TAG, "setSoundEnabled=$enabled")
-        prefs.edit().putBoolean(KEY_SOUND, enabled).apply()
-        _uiState.update { it.copy(soundEnabled = enabled) }
     }
 
     fun setDisplayName(name: String) {

@@ -23,6 +23,7 @@ import com.shashsam.boop.ui.screens.NfcGuideScreen
 import com.shashsam.boop.ui.screens.ProfileScreen
 import com.shashsam.boop.ui.screens.SettingsScreen
 import com.shashsam.boop.ui.screens.TransferProgressScreen
+import com.shashsam.boop.ui.viewmodels.BackupUiState
 import com.shashsam.boop.ui.viewmodels.SettingsUiState
 import com.shashsam.boop.ui.viewmodels.TransferUiState
 
@@ -39,6 +40,7 @@ fun BoopNavHost(
     navController: NavHostController,
     transferUiState: TransferUiState,
     settingsState: SettingsUiState,
+    backupState: BackupUiState,
     friends: List<FriendEntity>,
     profileItems: List<ProfileItemEntity>,
     profilePicPath: String?,
@@ -49,10 +51,12 @@ fun BoopNavHost(
     onResendBoop: (com.shashsam.boop.ui.models.RecentBoop) -> Unit,
     onNotificationsToggle: (Boolean) -> Unit,
     onVibrationToggle: (Boolean) -> Unit,
-    onSoundToggle: (Boolean) -> Unit,
     onDisplayNameChange: (String) -> Unit,
     onDarkModeToggle: (Boolean) -> Unit,
     onReceivePermissionChange: (String) -> Unit,
+    onExportData: (android.net.Uri, String) -> Unit,
+    onImportData: (android.net.Uri, String) -> Unit,
+    onDismissBackupMessage: () -> Unit,
     onProfilePicPick: (android.net.Uri) -> Unit,
     onAddProfileItem: (String, String, String, String) -> Unit,
     onEditProfileItem: (ProfileItemEntity) -> Unit,
@@ -196,6 +200,7 @@ fun BoopNavHost(
             }
             SettingsScreen(
                 settingsState = settingsState,
+                backupState = backupState,
                 onBackClick = {
                     Log.d(TAG, "Settings back -> Profile tab")
                     navController.navigate(BoopRoute.Profile.route) {
@@ -208,9 +213,11 @@ fun BoopNavHost(
                 },
                 onNotificationsToggle = onNotificationsToggle,
                 onVibrationToggle = onVibrationToggle,
-                onSoundToggle = onSoundToggle,
                 onDarkModeToggle = onDarkModeToggle,
-                onReceivePermissionChange = onReceivePermissionChange
+                onReceivePermissionChange = onReceivePermissionChange,
+                onExportData = onExportData,
+                onImportData = onImportData,
+                onDismissBackupMessage = onDismissBackupMessage
             )
         }
 
