@@ -294,6 +294,9 @@ class MainActivity : ComponentActivity() {
                         },
                         onCancelProfileShare = {
                             viewModel.cancelProfileShare()
+                        },
+                        onReshowWarnings = {
+                            viewModel.reshowWarnings()
                         }
                     )
                 }
@@ -309,12 +312,20 @@ class MainActivity : ComponentActivity() {
 
         // Re-check NFC/Wi-Fi state on resume (user may have toggled in system settings)
         if (nfcReader.isAvailable) {
-            viewModel.setNfcWarning(!nfcReader.isEnabled)
+            val nfcDisabled = !nfcReader.isEnabled
+            viewModel.setNfcWarning(nfcDisabled)
+            // If issue resolved, clear dismissed flag so it can re-trigger next time
+            if (!nfcDisabled) viewModel.clearNfcWarningDismissed()
         }
         val wifiManager = applicationContext.getSystemService(WIFI_SERVICE) as? WifiManager
         if (wifiManager != null) {
-            viewModel.setWifiWarning(!wifiManager.isWifiEnabled)
-            viewModel.setHotspotWarning(isHotspotEnabled(wifiManager))
+            val wifiDisabled = !wifiManager.isWifiEnabled
+            viewModel.setWifiWarning(wifiDisabled)
+            if (!wifiDisabled) viewModel.clearWifiWarningDismissed()
+
+            val hotspotOn = isHotspotEnabled(wifiManager)
+            viewModel.setHotspotWarning(hotspotOn)
+            if (!hotspotOn) viewModel.clearHotspotWarningDismissed()
         }
     }
 

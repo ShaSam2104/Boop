@@ -67,6 +67,7 @@ fun BoopNavHost(
     onRemoveFriend: (Long) -> Unit,
     onShareProfileClick: () -> Unit,
     onCancelProfileShare: () -> Unit,
+    onReshowWarnings: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     NavHost(
@@ -129,9 +130,14 @@ fun BoopNavHost(
         }
     ) {
         composable(BoopRoute.Home.route) {
+            val hasActiveWarnings = (transferUiState.nfcDisabledWarning && transferUiState.nfcWarningDismissedThisSession)
+                || (transferUiState.wifiDisabledWarning && transferUiState.wifiWarningDismissedThisSession)
+                || (transferUiState.hotspotWarning && transferUiState.hotspotWarningDismissedThisSession)
             HomeScreen(
                 permissionsGranted = permissionsGranted,
                 transferUiState = transferUiState,
+                hasActiveWarnings = hasActiveWarnings,
+                onWarningClick = onReshowWarnings,
                 onSendClick = onSendClick,
                 onResetClick = onResetClick,
                 onNfcGuideClick = {

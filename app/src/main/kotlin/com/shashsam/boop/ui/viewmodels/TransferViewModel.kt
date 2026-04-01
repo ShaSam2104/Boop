@@ -84,6 +84,9 @@ data class TransferUiState(
     val nfcDisabledWarning: Boolean = false,
     val wifiDisabledWarning: Boolean = false,
     val hotspotWarning: Boolean = false,
+    val nfcWarningDismissedThisSession: Boolean = false,
+    val wifiWarningDismissedThisSession: Boolean = false,
+    val hotspotWarningDismissedThisSession: Boolean = false,
     val senderFileUri: Uri? = null,
     val currentFileIndex: Int = 0,
     val totalFiles: Int = 1,
@@ -978,11 +981,11 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun dismissNfcWarning() {
-        _uiState.update { it.copy(nfcDisabledWarning = false) }
+        _uiState.update { it.copy(nfcWarningDismissedThisSession = true) }
     }
 
     fun dismissWifiWarning() {
-        _uiState.update { it.copy(wifiDisabledWarning = false) }
+        _uiState.update { it.copy(wifiWarningDismissedThisSession = true) }
     }
 
     fun setHotspotWarning(show: Boolean) {
@@ -990,7 +993,29 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun dismissHotspotWarning() {
-        _uiState.update { it.copy(hotspotWarning = false) }
+        _uiState.update { it.copy(hotspotWarningDismissedThisSession = true) }
+    }
+
+    /** Clears dismissed flags when the underlying issue is resolved. */
+    fun clearNfcWarningDismissed() {
+        _uiState.update { it.copy(nfcWarningDismissedThisSession = false) }
+    }
+
+    fun clearWifiWarningDismissed() {
+        _uiState.update { it.copy(wifiWarningDismissedThisSession = false) }
+    }
+
+    fun clearHotspotWarningDismissed() {
+        _uiState.update { it.copy(hotspotWarningDismissedThisSession = false) }
+    }
+
+    /** Re-shows all active warning dialogs by clearing dismissed flags. */
+    fun reshowWarnings() {
+        _uiState.update { it.copy(
+            nfcWarningDismissedThisSession = false,
+            wifiWarningDismissedThisSession = false,
+            hotspotWarningDismissedThisSession = false
+        ) }
     }
 
     /** Dismisses the NFC payload BottomSheet by clearing [TransferUiState.receivedPayload]. */

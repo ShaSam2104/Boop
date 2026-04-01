@@ -34,6 +34,7 @@ import androidx.compose.material.icons.filled.Contactless
 import androidx.compose.material.icons.filled.InsertDriveFile
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -59,6 +60,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.shashsam.boop.ui.models.RecentBoop
 import com.shashsam.boop.ui.theme.BoopAccentYellow
+import com.shashsam.boop.ui.theme.WarningAmber
 import com.shashsam.boop.ui.theme.BoopTheme
 import com.shashsam.boop.ui.theme.GlassCard
 import com.shashsam.boop.ui.theme.LocalBoopTokens
@@ -81,6 +83,8 @@ private const val TAG = "HomeScreen"
 fun HomeScreen(
     permissionsGranted: Boolean,
     transferUiState: TransferUiState,
+    hasActiveWarnings: Boolean = false,
+    onWarningClick: () -> Unit = {},
     onSendClick: () -> Unit,
     onResetClick: () -> Unit,
     onNfcGuideClick: () -> Unit = {},
@@ -123,6 +127,19 @@ fun HomeScreen(
                 )
             }
             Row {
+                if (hasActiveWarnings) {
+                    IconButton(onClick = {
+                        haptics.tick()
+                        onWarningClick()
+                    }) {
+                        Icon(
+                            imageVector = Icons.Filled.Warning,
+                            contentDescription = "Warnings",
+                            tint = WarningAmber,
+                            modifier = Modifier.size(26.dp)
+                        )
+                    }
+                }
                 IconButton(onClick = {
                     try {
                         val upiUri = Uri.parse("upi://pay?pa=03.shubhamshah-1@oksbi&pn=Boop&tn=Buy%20me%20a%20Chai&cu=INR")

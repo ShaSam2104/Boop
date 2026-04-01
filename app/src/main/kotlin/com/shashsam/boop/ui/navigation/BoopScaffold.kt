@@ -112,6 +112,7 @@ fun BoopScaffold(
     onRemoveFriend: (Long) -> Unit,
     onShareProfileClick: () -> Unit,
     onCancelProfileShare: () -> Unit,
+    onReshowWarnings: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     CompositionLocalProvider(LocalHapticsEnabled provides settingsState.vibrationEnabled) {
@@ -221,6 +222,7 @@ fun BoopScaffold(
             onRemoveFriend = onRemoveFriend,
             onShareProfileClick = onShareProfileClick,
             onCancelProfileShare = onCancelProfileShare,
+            onReshowWarnings = onReshowWarnings,
             modifier = Modifier.padding(innerPadding)
         )
     }
@@ -368,7 +370,7 @@ fun BoopScaffold(
     }
 
     // ── NFC Disabled Warning Dialog ──────────────────────────────────────
-    if (transferUiState.nfcDisabledWarning) {
+    if (transferUiState.nfcDisabledWarning && !transferUiState.nfcWarningDismissedThisSession) {
         AlertDialog(
             onDismissRequest = onDismissNfcWarning,
             shape = BoopShapeMedium,
@@ -395,11 +397,11 @@ fun BoopScaffold(
                 )
             },
             confirmButton = {
-                TextButton(onClick = {
+                NeoBrutalistButton(onClick = {
                     onDismissNfcWarning()
                     context.startActivity(Intent(Settings.ACTION_NFC_SETTINGS))
                 }) {
-                    Text("Open Settings", fontWeight = FontWeight.Bold, color = LocalBoopTokens.current.accent)
+                    Text("Open Settings", fontWeight = FontWeight.ExtraBold)
                 }
             },
             dismissButton = {
@@ -411,7 +413,7 @@ fun BoopScaffold(
     }
 
     // ── Wi-Fi Disabled Warning Dialog ────────────────────────────────────
-    if (transferUiState.wifiDisabledWarning) {
+    if (transferUiState.wifiDisabledWarning && !transferUiState.wifiWarningDismissedThisSession) {
         AlertDialog(
             onDismissRequest = onDismissWifiWarning,
             shape = BoopShapeMedium,
@@ -438,11 +440,11 @@ fun BoopScaffold(
                 )
             },
             confirmButton = {
-                TextButton(onClick = {
+                NeoBrutalistButton(onClick = {
                     onDismissWifiWarning()
                     context.startActivity(Intent(Settings.ACTION_WIFI_SETTINGS))
                 }) {
-                    Text("Open Settings", fontWeight = FontWeight.Bold, color = LocalBoopTokens.current.accent)
+                    Text("Open Settings", fontWeight = FontWeight.ExtraBold)
                 }
             },
             dismissButton = {
@@ -454,7 +456,7 @@ fun BoopScaffold(
     }
 
     // ── Hotspot Enabled Warning Dialog ──────────────────────────────────
-    if (transferUiState.hotspotWarning) {
+    if (transferUiState.hotspotWarning && !transferUiState.hotspotWarningDismissedThisSession) {
         AlertDialog(
             onDismissRequest = onDismissHotspotWarning,
             shape = BoopShapeMedium,
@@ -481,11 +483,11 @@ fun BoopScaffold(
                 )
             },
             confirmButton = {
-                TextButton(onClick = {
+                NeoBrutalistButton(onClick = {
                     onDismissHotspotWarning()
                     context.startActivity(Intent(Settings.ACTION_WIRELESS_SETTINGS))
                 }) {
-                    Text("Turn Off Hotspot", fontWeight = FontWeight.Bold, color = LocalBoopTokens.current.accent)
+                    Text("Turn Off Hotspot", fontWeight = FontWeight.ExtraBold)
                 }
             },
             dismissButton = {

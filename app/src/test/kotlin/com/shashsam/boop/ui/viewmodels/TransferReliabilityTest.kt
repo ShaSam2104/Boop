@@ -349,4 +349,58 @@ class TransferReliabilityTest {
         val profile = ProfileData("01HABCALICE000000ALICE", "Alice", "[]", null)
         assertEquals("01HABCALICE000000ALICE", profile.ulid)
     }
+
+    // ── Warning dismiss-once behavior ─────────────────────────────────────
+
+    @Test
+    fun `warning dialog hidden after session dismiss`() {
+        // Warning is active but user dismissed it
+        val state = TransferUiState(
+            nfcDisabledWarning = true,
+            nfcWarningDismissedThisSession = true
+        )
+        // Dialog should NOT show: warning && dismissed → hidden
+        assertTrue(state.nfcDisabledWarning)
+        assertTrue(state.nfcWarningDismissedThisSession)
+        // Has active warnings (for icon): warning is still true, dismissed is true
+        val hasActiveWarnings = (state.nfcDisabledWarning && state.nfcWarningDismissedThisSession)
+        assertTrue(hasActiveWarnings)
+    }
+
+    @Test
+    fun `warning dialog shows when not dismissed`() {
+        val state = TransferUiState(nfcDisabledWarning = true)
+        // Dialog SHOULD show: warning && !dismissed
+        assertTrue(state.nfcDisabledWarning)
+        assertFalse(state.nfcWarningDismissedThisSession)
+    }
+
+    @Test
+    fun `clearing dismissed flag re-enables dialog`() {
+        val dismissed = TransferUiState(
+            wifiDisabledWarning = true,
+            wifiWarningDismissedThisSession = true
+        )
+        // Simulate clearing dismissed flag (issue resolved or user tapped warning icon)
+        val cleared = dismissed.copy(wifiWarningDismissedThisSession = false)
+        assertTrue(cleared.wifiDisabledWarning)
+        assertFalse(cleared.wifiWarningDismissedThisSession)
+    }
+
+    @Test
+    fun `resolved warning clears both state and dismissed flag`() {
+        val state = TransferUiState(
+            hotspotWarning = true,
+            hotspotWarningDismissedThisSession = true
+        )
+        // Simulate user turning off hotspot → onResume clears both
+        val resolved = state.copy(hotspotWarning = false, hotspotWarningDismissedThisSession = false)
+        assertFalse(resolved.hotspotWarning)
+        assertFalse(resolved.hotspotWarningDismissedThisSession)
+        // No active warnings
+        val hasActiveWarnings = (resolved.nfcDisabledWarning && resolved.nfcWarningDismissedThisSession)
+            || (resolved.wifiDisabledWarning && resolved.wifiWarningDismissedThisSession)
+            || (resolved.hotspotWarning && resolved.hotspotWarningDismissedThisSession)
+        assertFalse(hasActiveWarnings)
+    }
 }

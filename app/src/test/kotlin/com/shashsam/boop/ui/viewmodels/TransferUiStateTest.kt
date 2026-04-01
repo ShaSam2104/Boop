@@ -155,4 +155,24 @@ class TransferUiStateTest {
         val exchanged = state.copy(friendExchangeComplete = true)
         assertTrue(exchanged.friendExchangeComplete)
     }
+
+    @Test
+    fun `warning dismissed flags default to false`() {
+        val state = TransferUiState()
+        assertFalse(state.nfcWarningDismissedThisSession)
+        assertFalse(state.wifiWarningDismissedThisSession)
+        assertFalse(state.hotspotWarningDismissedThisSession)
+    }
+
+    @Test
+    fun `warning dismissed flags can be set independently`() {
+        val state = TransferUiState().copy(
+            nfcDisabledWarning = true,
+            nfcWarningDismissedThisSession = true
+        )
+        assertTrue(state.nfcDisabledWarning)
+        assertTrue(state.nfcWarningDismissedThisSession)
+        assertFalse(state.wifiWarningDismissedThisSession)
+        assertFalse(state.hotspotWarningDismissedThisSession)
+    }
 }
