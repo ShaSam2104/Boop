@@ -258,6 +258,12 @@ class MainActivity : ComponentActivity() {
                         onDismissBackupMessage = {
                             backupViewModel.dismissMessage()
                         },
+                        onDownloadLocationPick = { uri ->
+                            settingsViewModel.setDownloadLocation(uri)
+                        },
+                        onDownloadLocationClear = {
+                            settingsViewModel.clearDownloadLocation()
+                        },
                         onProfilePicPick = { uri ->
                             profileViewModel.setProfilePic(uri)
                         },

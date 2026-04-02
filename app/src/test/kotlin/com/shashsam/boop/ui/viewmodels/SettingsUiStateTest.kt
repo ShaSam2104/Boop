@@ -73,4 +73,23 @@ class SettingsUiStateTest {
         // Other fields unchanged
         assertEquals("My Device", state.displayName)
     }
+
+    @Test
+    fun `default download location is Downloads`() {
+        val state = SettingsUiState()
+        assertEquals(null, state.downloadLocationUri)
+        assertEquals("Downloads", state.downloadLocationName)
+    }
+
+    @Test
+    fun `copy with custom download location`() {
+        val state = SettingsUiState().copy(
+            downloadLocationUri = "content://com.android.externalstorage.documents/tree/primary%3ABoopFiles",
+            downloadLocationName = "BoopFiles"
+        )
+        assertEquals("content://com.android.externalstorage.documents/tree/primary%3ABoopFiles", state.downloadLocationUri)
+        assertEquals("BoopFiles", state.downloadLocationName)
+        // Other fields unchanged
+        assertEquals("My Device", state.displayName)
+    }
 }

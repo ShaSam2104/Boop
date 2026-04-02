@@ -58,6 +58,8 @@ fun BoopNavHost(
     onExportData: (android.net.Uri, String) -> Unit,
     onImportData: (android.net.Uri, String) -> Unit,
     onDismissBackupMessage: () -> Unit,
+    onDownloadLocationPick: (android.net.Uri) -> Unit,
+    onDownloadLocationClear: () -> Unit,
     onProfilePicPick: (android.net.Uri) -> Unit,
     onAddProfileItem: (String, String, String, String) -> Unit,
     onEditProfileItem: (ProfileItemEntity) -> Unit,
@@ -233,7 +235,9 @@ fun BoopNavHost(
                 onReceivePermissionChange = onReceivePermissionChange,
                 onExportData = onExportData,
                 onImportData = onImportData,
-                onDismissBackupMessage = onDismissBackupMessage
+                onDismissBackupMessage = onDismissBackupMessage,
+                onDownloadLocationPick = onDownloadLocationPick,
+                onDownloadLocationClear = onDownloadLocationClear
             )
         }
 

@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FileUpload
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Notifications
@@ -100,6 +101,8 @@ fun SettingsScreen(
     onExportData: (Uri, String) -> Unit,
     onImportData: (Uri, String) -> Unit,
     onDismissBackupMessage: () -> Unit,
+    onDownloadLocationPick: (Uri) -> Unit,
+    onDownloadLocationClear: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Log.d(TAG, "SettingsScreen recompose — state=$settingsState")
@@ -132,6 +135,15 @@ fun SettingsScreen(
         if (uri != null) {
             pendingUri = uri
             showImportPasswordDialog = true
+        }
+    }
+
+    val downloadLocationLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocumentTree()
+    ) { uri ->
+        if (uri != null) {
+            Log.d(TAG, "Download location selected: $uri")
+            onDownloadLocationPick(uri)
         }
     }
 
@@ -301,6 +313,44 @@ fun SettingsScreen(
                 color = tokens.textSecondary,
                 modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp)
             )
+
+            // Download Location
+            SettingsNavigationRow(
+                icon = Icons.Filled.Folder,
+                label = "Download Location",
+                value = settingsState.downloadLocationName,
+                onClick = {
+                    Log.d(TAG, "Download location row clicked")
+                    haptics.tick()
+                    downloadLocationLauncher.launch(null)
+                }
+            )
+
+            // Show reset option when custom location is set
+            if (settingsState.downloadLocationUri != null) {
+                GlassCard(modifier = Modifier.fillMaxWidth()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                haptics.tick()
+                                onDownloadLocationClear()
+                            }
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Text(
+                            text = "Reset to Downloads",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = tokens.accent
+                        )
+                    }
+                }
+            }
+
+            SettingsDivider()
 
             SettingsActionRow(
                 icon = Icons.Filled.FileUpload,
@@ -824,7 +874,9 @@ private fun SettingsScreenPreview() {
             onReceivePermissionChange = {},
             onExportData = { _, _ -> },
             onImportData = { _, _ -> },
-            onDismissBackupMessage = {}
+            onDismissBackupMessage = {},
+            onDownloadLocationPick = {},
+            onDownloadLocationClear = {}
         )
     }
 }
@@ -843,7 +895,9 @@ private fun SettingsScreenLightPreview() {
             onReceivePermissionChange = {},
             onExportData = { _, _ -> },
             onImportData = { _, _ -> },
-            onDismissBackupMessage = {}
+            onDismissBackupMessage = {},
+            onDownloadLocationPick = {},
+            onDownloadLocationClear = {}
         )
     }
 }

@@ -140,6 +140,12 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
     private var autoSaveProfileFromFriend: Boolean = false
     private var friendDecisionDeferred: CompletableDeferred<Boolean>? = null
 
+    /** Reads the user's custom download location URI from SharedPreferences, if set. */
+    private fun getCustomDownloadLocationUri(): Uri? {
+        val uriString = settingsPrefs.getString("download_location_uri", null)
+        return uriString?.let { Uri.parse(it) }
+    }
+
     private val _selectedFriendId = MutableStateFlow<Long?>(null)
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     val selectedFriend: StateFlow<FriendEntity?> = _selectedFriendId
@@ -627,13 +633,15 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
                 // 3. Connected — open TCP receive on the Group Owner IP.
                 Log.d(TAG, "Wi-Fi Direct connected — starting TCP receive on ${GROUP_OWNER_IP}:${details.port} (fileCount=${details.fileCount})")
                 appendLog("🚀 Starting file receive (${GROUP_OWNER_IP}:${details.port})…")
+                val downloadLocation = getCustomDownloadLocationUri()
                 if (pendingBefriend) {
                     val localProfile = buildLocalProfile()
                     TransferManager.receiveFilesWithFriendExchange(
                         context, GROUP_OWNER_IP, details.port,
                         fileCount = details.fileCount,
                         becomeFriends = true,
-                        localProfile = localProfile
+                        localProfile = localProfile,
+                        customLocationUri = downloadLocation
                     ).collect { progress ->
                         if (progress.friendProfile != null) {
                             handleFriendProfileReceived(progress.friendProfile)
@@ -645,10 +653,10 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
                         }
                     }
                 } else if (details.fileCount > 1) {
-                    TransferManager.receiveFiles(context, GROUP_OWNER_IP, details.port)
+                    TransferManager.receiveFiles(context, GROUP_OWNER_IP, details.port, customLocationUri = downloadLocation)
                         .collect { progress -> handleMultiFileProgress(progress) }
                 } else {
-                    TransferManager.receiveFile(context, GROUP_OWNER_IP, details.port)
+                    TransferManager.receiveFile(context, GROUP_OWNER_IP, details.port, customLocationUri = downloadLocation)
                         .collect { progress -> handleTransferProgress(progress) }
                 }
             } finally {

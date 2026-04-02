@@ -5,6 +5,7 @@ import android.content.Context
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
+import android.provider.DocumentsContract
 import android.provider.MediaStore
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
@@ -226,9 +227,10 @@ object TransferManager {
     fun receiveFile(
         context: Context,
         groupOwnerAddress: String,
-        port: Int
+        port: Int,
+        customLocationUri: Uri? = null
     ): Flow<TransferProgress> = channelFlow {
-        Log.d(TAG, "receiveFile: host=$groupOwnerAddress port=$port")
+        Log.d(TAG, "receiveFile: host=$groupOwnerAddress port=$port customLocation=$customLocationUri")
         withContext(Dispatchers.IO) {
             var socket: Socket? = null
             try {
@@ -240,8 +242,8 @@ object TransferManager {
                 val header = readHeader(dataIn)
                 Log.d(TAG, "Receiving — name=${header.name} size=${header.size} mime=${header.mimeType}")
 
-                val outputUri = insertMediaStoreEntry(context, header)
-                    ?: throw IllegalStateException("Failed to create MediaStore entry for: ${header.name}")
+                val outputUri = insertMediaStoreEntry(context, header, customLocationUri)
+                    ?: throw IllegalStateException("Failed to create entry for: ${header.name}")
 
                 context.contentResolver.openOutputStream(outputUri)?.use { outputStream ->
                     streamBytes(
@@ -252,8 +254,8 @@ object TransferManager {
                         send(TransferProgress(transferred, header.size))
                     }
 
-                    // Remove IS_PENDING flag to publish the file (API 29+)
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    // Remove IS_PENDING flag for MediaStore entries only (API 29+)
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && isMediaStoreUri(outputUri)) {
                         context.contentResolver.update(
                             outputUri,
                             ContentValues().apply { put(MediaStore.Downloads.IS_PENDING, 0) },
@@ -342,9 +344,10 @@ object TransferManager {
     fun receiveFiles(
         context: Context,
         groupOwnerAddress: String,
-        port: Int
+        port: Int,
+        customLocationUri: Uri? = null
     ): Flow<TransferProgress> = channelFlow {
-        Log.d(TAG, "receiveFiles: host=$groupOwnerAddress port=$port")
+        Log.d(TAG, "receiveFiles: host=$groupOwnerAddress port=$port customLocation=$customLocationUri")
         withContext(Dispatchers.IO) {
             var socket: Socket? = null
             try {
@@ -360,8 +363,8 @@ object TransferManager {
                     val header = readHeader(dataIn)
                     Log.d(TAG, "Receiving file ${index + 1}/$totalFiles — name=${header.name} size=${header.size}")
 
-                    val outputUri = insertMediaStoreEntry(context, header)
-                        ?: throw IllegalStateException("Failed to create MediaStore entry for: ${header.name}")
+                    val outputUri = insertMediaStoreEntry(context, header, customLocationUri)
+                        ?: throw IllegalStateException("Failed to create entry for: ${header.name}")
 
                     context.contentResolver.openOutputStream(outputUri)?.use { outputStream ->
                         streamBytes(
@@ -372,7 +375,7 @@ object TransferManager {
                             send(TransferProgress(transferred, header.size, fileIndex = index, totalFiles = totalFiles))
                         }
 
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && isMediaStoreUri(outputUri)) {
                             context.contentResolver.update(
                                 outputUri,
                                 ContentValues().apply { put(MediaStore.Downloads.IS_PENDING, 0) },
@@ -597,9 +600,10 @@ object TransferManager {
         port: Int,
         fileCount: Int,
         becomeFriends: Boolean,
-        localProfile: ProfileData?
+        localProfile: ProfileData?,
+        customLocationUri: Uri? = null
     ): Flow<TransferProgress> = channelFlow {
-        Log.d(TAG, "receiveFilesWithFriendExchange: host=$groupOwnerAddress fileCount=$fileCount becomeFriends=$becomeFriends")
+        Log.d(TAG, "receiveFilesWithFriendExchange: host=$groupOwnerAddress fileCount=$fileCount becomeFriends=$becomeFriends customLocation=$customLocationUri")
         withContext(Dispatchers.IO) {
             var socket: Socket? = null
             try {
@@ -612,8 +616,8 @@ object TransferManager {
                 for (index in 0 until totalFiles) {
                     val header = readHeader(dataIn)
 
-                    val outputUri = insertMediaStoreEntry(context, header)
-                        ?: throw IllegalStateException("Failed to create MediaStore entry for: ${header.name}")
+                    val outputUri = insertMediaStoreEntry(context, header, customLocationUri)
+                        ?: throw IllegalStateException("Failed to create entry for: ${header.name}")
 
                     context.contentResolver.openOutputStream(outputUri)?.use { outputStream ->
                         streamBytes(
@@ -624,7 +628,7 @@ object TransferManager {
                             send(TransferProgress(transferred, header.size, fileIndex = index, totalFiles = totalFiles))
                         }
 
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && isMediaStoreUri(outputUri)) {
                             context.contentResolver.update(
                                 outputUri,
                                 ContentValues().apply { put(MediaStore.Downloads.IS_PENDING, 0) },
@@ -730,14 +734,43 @@ object TransferManager {
     }
 
     /**
-     * Inserts a new [MediaStore] entry for the file to be received.
+     * Creates an output entry for the file to be received.
+     *
+     * When [customLocationUri] is non-null, creates the file in the SAF-selected folder
+     * using [DocumentsContract]. Otherwise falls back to [MediaStore.Downloads].
      *
      * - **API 29+**: uses [MediaStore.Downloads] with `IS_PENDING = 1` for atomic writes.
      * - **API 26–28**: uses [Environment.DIRECTORY_DOWNLOADS] via legacy file path.
      *
-     * @return URI of the new [MediaStore] entry, or `null` on failure.
+     * @return URI of the new entry, or `null` on failure.
      */
-    private fun insertMediaStoreEntry(context: Context, header: FileTransferHeader): Uri? {
+    private fun insertMediaStoreEntry(
+        context: Context,
+        header: FileTransferHeader,
+        customLocationUri: Uri? = null
+    ): Uri? {
+        // Custom SAF-based location
+        if (customLocationUri != null) {
+            return try {
+                val treeDocId = DocumentsContract.getTreeDocumentId(customLocationUri)
+                val parentDocUri = DocumentsContract.buildDocumentUriUsingTree(
+                    customLocationUri, treeDocId
+                )
+                DocumentsContract.createDocument(
+                    context.contentResolver, parentDocUri, header.mimeType, header.name
+                )
+            } catch (e: Exception) {
+                Log.w(TAG, "Custom location failed for ${header.name}, falling back to Downloads", e)
+                // Fall through to default MediaStore
+                insertMediaStoreEntryDefault(context, header)
+            }
+        }
+
+        return insertMediaStoreEntryDefault(context, header)
+    }
+
+    /** Default MediaStore-based file creation in Downloads. */
+    private fun insertMediaStoreEntryDefault(context: Context, header: FileTransferHeader): Uri? {
         return try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 val values = ContentValues().apply {
@@ -767,4 +800,8 @@ object TransferManager {
             null
         }
     }
+
+    /** Returns true if the URI is a MediaStore content:// URI (needs IS_PENDING cleanup). */
+    private fun isMediaStoreUri(uri: Uri): Boolean =
+        uri.authority == "media" || uri.toString().startsWith("content://media/")
 }
