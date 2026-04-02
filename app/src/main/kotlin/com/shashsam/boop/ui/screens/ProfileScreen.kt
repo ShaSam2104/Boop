@@ -343,6 +343,16 @@ fun ProfileScreen(
         }
 
         if (profileItems.isNotEmpty()) {
+            if (profileItems.size >= 2) {
+                item {
+                    Text(
+                        text = "Hold & drag to rearrange",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = tokens.textTertiary,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+                }
+            }
             item {
                 BentoGrid(
                     items = profileItems,

@@ -27,6 +27,7 @@ Boop is an Android P2P file-sharing app. Two devices share files by tapping toge
 - **Kotlin Coroutines & Flows** — no raw threads or callbacks
 - **Room 2.6.1 + KSP 2.0.0** — local SQLite persistence for transfer history, friends list, and profile items
 - **Coil 2.6.0** — async image loading for profile pictures
+- **Reorderable 2.4.0** (`sh.calvin.reorderable`) — drag-and-drop reordering for BentoGrid `LazyVerticalGrid`
 - **Gradle 8.6 / AGP 8.3.2** — version catalog in `gradle/libs.versions.toml`
 - **minSdk 26 / compileSdk 34**
 
@@ -107,7 +108,7 @@ Routes are defined in `BoopRoute` sealed class: Home, History, Profile, Transfer
 | `ui/screens/ProfileScreen` | Rich profile page: centered GlassCard with 72dp circular profile pic (Coil AsyncImage, tap to change via photo picker), display name (headlineSmall, centered, tap to edit), device name (bodySmall, textTertiary, centered), bio line (bodySmall, textSecondary, tap to edit via BioDialog, 100 char max, "Add a bio" placeholder when empty) — all in one card. Share Profile via NFC button below card. Bento grid section (Links — add/edit/delete items, max 12), friends preview (3 max + "View All" → FriendsList). Header: friends icon + settings gear. LazyColumn layout |
 | `ui/screens/FriendsListScreen` | Full friends list page: back button header with count, all friend cards with profile pic/name/stats/chevron, empty state with PersonOff icon |
 | `ui/screens/FriendProfileScreen` | Read-only friend profile view: back button + history/unfriend icons in header, profile pic, display name, transfer stats, bio (bodySmall, textSecondary, shown if non-empty), read-only BentoGrid (parsed from friend.profileJson via ParsedProfile). Header icons: history (navigates to FriendHistory), unfriend (shows confirmation dialog) |
-| `ui/components/BentoGrid` | 4-column grid for profile items: half items = 1x1 square (icon only), full items = 1x2 wide (icon + label). Uses `aspectRatio` for consistent tile sizing. All icons use uniform `tokens.accent` color (not brand colors). Edit mode (edit/delete overlays) and view mode (tap to open link/email/phone, long-press to copy) |
+| `ui/components/BentoGrid` | 4-column grid for profile items: half items = 1x1 square (icon only), full items = 1x2 wide (icon + label). All icons use uniform `tokens.accent` color (not brand colors). Edit mode uses `LazyVerticalGrid` + `sh.calvin.reorderable` library for smooth long-press drag-and-drop reordering with spring animations; view mode uses static `Column`+`Row` layout (tap to open link/email/phone, long-press to copy). ProfileScreen shows "Hold & drag to rearrange" hint when 2+ items |
 | `ui/components/ProfileItemDialog` | AlertDialog for add/edit profile item: type selector (Link/Email/Phone), label/value fields (keyboard adapts), size toggle (Half/Full) with brand-purple selected state. Optional `onDelete` callback — when editing an existing item, a red Delete button appears alongside Cancel |
 | `ui/components/NfcAntennaGuide` | Canvas visualization of NFC antenna location using `getNfcAntennaInfo()` (API 34+) with fallback |
 | `ui/theme/BoopDesignSystem` | Neo-brutalist components: `NeoBrutalistButton`, `GlassCard`, `boopGlow`, `BoopBottomNavBar`, design tokens |
