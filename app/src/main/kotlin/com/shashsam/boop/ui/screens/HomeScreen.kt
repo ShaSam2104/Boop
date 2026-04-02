@@ -28,13 +28,18 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AudioFile
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Contactless
-import androidx.compose.material.icons.filled.InsertDriveFile
+import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.automirrored.filled.InsertDriveFile
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -58,6 +63,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import com.shashsam.boop.ui.models.RecentBoop
 import com.shashsam.boop.ui.theme.BoopAccentYellow
 import com.shashsam.boop.ui.theme.WarningAmber
@@ -467,9 +476,9 @@ private fun RecentBoopsSection(
     modifier: Modifier = Modifier
 ) {
     val tokens = LocalBoopTokens.current
+    val context = LocalContext.current
     Column(
-        modifier = modifier,
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+        modifier = modifier
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -490,58 +499,99 @@ private fun RecentBoopsSection(
                 modifier = Modifier.clickable { onViewAllClick() }
             )
         }
-        recentTransfers.takeLast(3).reversed().forEach { boop ->
-            GlassCard(modifier = Modifier.fillMaxWidth()) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable(enabled = boop.fileUri != null) {
-                            onBoopClick(boop)
-                        }
-                        .padding(12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(40.dp)
-                            .clip(CircleShape)
-                            .background(
-                                if (boop.wasSender) BoopAccentYellow.copy(alpha = 0.15f)
-                                else MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
-                            ),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = if (boop.wasSender) Icons.Filled.CloudUpload else Icons.Filled.CloudDownload,
-                            contentDescription = null,
-                            tint = if (boop.wasSender) BoopAccentYellow else MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(20.dp)
-                        )
+        Spacer(modifier = Modifier.height(4.dp))
+        recentTransfers.takeLast(3).reversed().forEachIndexed { index, boop ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(enabled = boop.fileUri != null) {
+                        onBoopClick(boop)
                     }
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = boop.fileName,
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onBackground,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Text(
-                            text = "${boop.fileSize.toFormattedSize()} — ${if (boop.wasSender) "Sent" else "Received"}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = tokens.textSecondary
-                        )
-                    }
-                    Icon(
-                        imageVector = Icons.Filled.InsertDriveFile,
-                        contentDescription = null,
-                        tint = tokens.textTertiary,
-                        modifier = Modifier.size(20.dp)
+                    .padding(vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                // File type thumbnail
+                RecentBoopThumbnail(
+                    mimeType = boop.mimeType,
+                    fileUri = boop.fileUri
+                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = boop.fileName,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onBackground,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = "${boop.fileSize.toFormattedSize()} - ${if (boop.wasSender) "Sent" else "Received"}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = tokens.textSecondary
                     )
                 }
             }
+            if (index < 2 && index < recentTransfers.takeLast(3).size - 1) {
+                HorizontalDivider(
+                    modifier = Modifier.padding(start = 62.dp),
+                    thickness = 0.5.dp,
+                    color = tokens.textTertiary.copy(alpha = 0.3f)
+                )
+            }
+        }
+    }
+}
+
+/** Returns an appropriate icon for the given MIME type. */
+private fun getRecentBoopFileTypeIcon(mimeType: String): ImageVector = when {
+    mimeType.startsWith("image/") -> Icons.Filled.Image
+    mimeType.startsWith("video/") -> Icons.Filled.Videocam
+    mimeType.startsWith("audio/") -> Icons.Filled.AudioFile
+    mimeType.startsWith("text/") || mimeType.contains("pdf") ||
+        mimeType.contains("document") || mimeType.contains("word") ||
+        mimeType.contains("sheet") || mimeType.contains("presentation") -> Icons.Filled.Description
+    else -> Icons.AutoMirrored.Filled.InsertDriveFile
+}
+
+@Composable
+private fun RecentBoopThumbnail(
+    mimeType: String,
+    fileUri: android.net.Uri?,
+    modifier: Modifier = Modifier
+) {
+    val tokens = LocalBoopTokens.current
+    val context = LocalContext.current
+    val isImage = mimeType.startsWith("image/")
+
+    Box(
+        modifier = modifier
+            .size(48.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .background(tokens.glassBg),
+        contentAlignment = Alignment.Center
+    ) {
+        // Base layer: file type icon (always rendered as fallback)
+        Icon(
+            imageVector = getRecentBoopFileTypeIcon(mimeType),
+            contentDescription = null,
+            tint = tokens.textSecondary,
+            modifier = Modifier.size(22.dp)
+        )
+
+        // Overlay: actual image thumbnail when available
+        if (isImage && fileUri != null) {
+            AsyncImage(
+                model = ImageRequest.Builder(context)
+                    .data(fileUri)
+                    .crossfade(true)
+                    .size(160)
+                    .build(),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
         }
     }
 }
